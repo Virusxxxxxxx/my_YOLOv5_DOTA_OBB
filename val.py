@@ -363,21 +363,11 @@ if __name__ == '__main__':
         txt中的内容格式:  目标所属原始图片名称 置信度 poly
     4.写一个imgname2txt.py 将测试集的所有图片名称打印到namefile.txt中
     '''
-    # For DOTA-v1.5
-    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
-                  'tennis-court',
-                  'basketball-court', 'storage-tank', 'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool',
-                  'helicopter', 'container-crane']
-    # For DOTA-v1.0
-    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', ']
 
-    #
     val(
         detectionPath='/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection',
         rawImagePath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
-        rawLabelPath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_DOTA_labels/{:s}.txt',
-        classnames=classnames
+        rawLabelPath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_DOTA_labels/{:s}.txt'
     )
 
     draw_DOTA_image(imgsrcpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',

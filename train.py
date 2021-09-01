@@ -33,6 +33,11 @@ from val import *
 
 logger = logging.getLogger(__name__)
 
+classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
+              'tennis-court',
+              'basketball-court', 'storage-tank', 'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool',
+              'helicopter', 'container-crane']
+
 
 def train(hyp, opt, device, tb_writer=None):
     logger.info(f'Hyperparameters {hyp}')
@@ -540,10 +545,10 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             # 将测试指标写入result.txt
-            with open(results_file, 'a') as f:
-                f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
-            if len(opt.name) and opt.bucket:
-                os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
+            # with open(results_file, 'a') as f:
+            #     f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
+            # if len(opt.name) and opt.bucket:
+            #     os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
             # Tensorboard
             # 添加指标，损失等信息到tensorboard显示
