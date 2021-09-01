@@ -205,20 +205,20 @@ def train(hyp, opt, device, tb_writer=None):
     
     # Freeze
     #freeze = ['', ]  # parameter names to freeze (full or partial)
-    # freeze = ['model.%s.' % x for x in range(10)]  # 冻结带有'model.0.'-'model.9.'的所有参数 即冻结0-9层的backbone
-    # if any(freeze):
-    #     for k, v in model.named_parameters():
-    #         if any(x in k for x in freeze):
-    #             print('freezing %s' % k)
-    #             v.requires_grad = False
+    freeze = ['model.%s.' % x for x in range(10)]  # 冻结带有'model.0.'-'model.9.'的所有参数 即冻结0-9层的backbone
+    if any(freeze):
+        for k, v in model.named_parameters():
+            if any(x in k for x in freeze):
+                print('freezing %s' % k)
+                v.requires_grad = False
     # my code from yolov5
-    freeze = opt.freeze
-    freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
-    for k, v in model.named_parameters():
-        v.requires_grad = True  # train all layers
-        if any(x in k for x in freeze):
-            print(f'freezing {k}')
-            v.requires_grad = False
+    # freeze = opt.freeze
+    # freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
+    # for k, v in model.named_parameters():
+    #     v.requires_grad = True  # train all layers
+    #     if any(x in k for x in freeze):
+    #         print(f'freezing {k}')
+    #         v.requires_grad = False
                 
 
     # 设置学习率衰减，这里为余弦退火方式进行衰减
@@ -595,7 +595,7 @@ def train(hyp, opt, device, tb_writer=None):
                 if opt.bucket and opt.auto_upload:  # upload
                     for item in [last, best, log_dir / f'classAP.csv', log_dir / f'classAP.png']:
                         os.system('cp --parents %s %s' % (item, opt.bucket))
-                    print("Auto-upload completed!")
+                    print("   Auto-upload completed!")
                 del ckpt
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training
@@ -617,7 +617,7 @@ def train(hyp, opt, device, tb_writer=None):
                     # 上传结果到谷歌云盘
                     # os.system('gsutil cp %s gs://%s/weights' % (f2, opt.bucket)) if opt.bucket else None  # upload
                     os.system('cp --parents %s %s' % (f2, opt.bucket)) if opt.bucket else None  # upload
-                    print("weights have saved into %s/%s" % (opt.bucket, str(f2)))
+                    print("weights have saved into %s%s" % (opt.bucket, str(f2)))
 
         # Finish
         # 可视化results.txt文件

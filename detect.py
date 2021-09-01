@@ -63,7 +63,7 @@ def detect(opt, weights=None, model=None, save_img=False):
         dataset = LoadStreams(source, img_size=imgsz)
     else:
         save_img = True
-        dataset = LoadImages(source, img_size=imgsz)
+        dataset = LoadImages(source, img_size=imgsz)  # val
 
     # Get names and colors
     # 获取类别名字    names = ['person', 'bicycle', 'car',...,'toothbrush']
