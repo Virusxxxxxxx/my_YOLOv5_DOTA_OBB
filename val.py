@@ -18,7 +18,7 @@ from utils import polyiou
 from functools import partial
 import pdb
 from utils.evaluation_utils import mergebypoly, evaluation_trans, image2txt, draw_DOTA_image
-from utils.general import colorstr
+from utils.general import colorstr, plotChart
 
 
 def parse_gt(filename):
@@ -98,23 +98,19 @@ def voc_eval(detpath,
              # cachedir,
              ovthresh=0.5,
              use_07_metric=False):
-    """rec, prec, ap = voc_eval(detpath,
-                                annopath,
-                                imagesetfile,
-                                classname,
-                                [ovthresh],
-                                [use_07_metric])
+    """
     Top level function that does the PASCAL VOC evaluation.
-    detpath: Path to detections
-        detpath.format(classname) should produce the detection results file.
-    annopath: Path to annotations
+    @param detpath: Path to detections
+           detpath.format(classname) should produce the detection results file.
+    @param annopath: Path to annotations
         annopath.format(imagename) should be the xml annotations file.
-    imagesetfile: Text file containing the list of images, one image per line.
-    classname: Category name (duh)
+    @param imagesetfile: Text file containing the list of images, one image per line.
+    @param classname: Category name (duh)
     cachedir: Directory for caching the annotations
-    [ovthresh]: Overlap threshold (default = 0.5)
-    [use_07_metric]: Whether to use VOC07's 11 point AP computation
+    @param [ovthresh]: Overlap threshold (default = 0.5)
+    @param [use_07_metric]: Whether to use VOC07's 11 point AP computation
         (default False)
+    @return: rec, prec, ap
     """
     # assumes detections are in detpath.format(classname)
     # assumes annotations are in annopath.format(imagename)
@@ -311,7 +307,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     # imagesetfile = r'PATH_TO_BE_CONFIGURED/valset.txt'
 
     # classaps = []
-    epoch = len(open(resultPath / 'result.csv', 'r').readlines())
+    epoch = len(open(resultPath / 'classAP.csv', 'r').readlines())
     allClassAp = [epoch]
     map = 0
     skippedClassCount = 0
@@ -343,11 +339,11 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     print(colorstr('   mAP:'), map)
     allClassAp.insert(1, map)
 
-    with open(resultPath / 'result.csv', 'a', encoding='utf-8', newline="") as f_ap:
-
+    with open(resultPath / 'classAP.csv', 'a', encoding='utf-8', newline="") as f_ap:
         csv_ap = csv.writer(f_ap)
         csv_ap.writerow(allClassAp)
 
+    plotChart("classAP", str(resultPath))
     # classaps = 100 * np.array(classaps)
     # print('classaps: ', classaps)
 
@@ -369,10 +365,3 @@ if __name__ == '__main__':
         rawImagePath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
         rawLabelPath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_DOTA_labels/{:s}.txt'
     )
-
-    draw_DOTA_image(imgsrcpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
-                    imglabelspath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/result_txt/result_merged',
-                    dstpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/merged_drawed',
-                    extractclassname=classnames,
-                    thickness=2
-                    )

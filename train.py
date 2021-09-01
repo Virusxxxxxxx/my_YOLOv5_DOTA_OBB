@@ -378,7 +378,7 @@ def train(hyp, opt, device, tb_writer=None):
                 'Starting training for %g epochs...' % (imgsz, imgsz_test, dataloader.num_workers, log_dir, epochs))
 
     # AP结果写入文件
-    with open(log_dir / 'result.csv', 'w', encoding='utf-8', newline="") as f_ap:
+    with open(log_dir / 'classAP.csv', 'w', encoding='utf-8', newline="") as f_ap:
         csv_ap = csv.writer(f_ap)
         csv_ap.writerow(['Epoch', 'mAP', *classnames])
 
@@ -531,9 +531,16 @@ def train(hyp, opt, device, tb_writer=None):
                 ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'gr', 'names', 'stride'])
             final_epoch = epoch + 1 == epochs
             # # 判断该epoch是否为最后一轮
-            # if not opt.notest or final_epoch:  # Calculate mAP
-            #     # 对测试集进行测试，计算mAP等指标
-            #     # 测试时使用的是EMA模型
+            if not opt.notest or final_epoch:  # Calculate mAP
+                # 对测试集进行测试，计算mAP等指标
+                # 测试时使用的是EMA模型
+                detect(opt, model=ema.ema)
+                val(
+                    detectionPath='./DOTA_demo_view/detection',
+                    rawImagePath=r'./DOTA_demo_view/row_images',
+                    rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt',
+                    resultPath=log_dir
+                )
             #     results, maps, times = test.test(opt.data,
             #                                      batch_size=total_batch_size,
             #                                      imgsz=imgsz_test,
@@ -545,10 +552,10 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             # 将测试指标写入result.txt
-            # with open(results_file, 'a') as f:
-            #     f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
-            # if len(opt.name) and opt.bucket:
-            #     os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
+            with open(results_file, 'a') as f:
+                f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
+            if len(opt.name) and opt.bucket:
+                os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
             # Tensorboard
             # 添加指标，损失等信息到tensorboard显示
@@ -585,14 +592,11 @@ def train(hyp, opt, device, tb_writer=None):
                 torch.save(ckpt, last)
                 if best_fitness == fi:
                     torch.save(ckpt, best)
+                if opt.bucket and opt.auto_upload:  # upload
+                    for item in [last, best, log_dir / f'classAP.csv', log_dir / f'classAP.png']:
+                        os.system('cp --parents %s %s' % (item, opt.bucket))
+                    print("Auto-upload completed!")
                 del ckpt
-                detect(opt, str(last), device)
-                val(
-                    detectionPath='./DOTA_demo_view/detection',
-                    rawImagePath=r'./DOTA_demo_view/row_images',
-                    rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt',
-                    resultPath=log_dir
-                )
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training
 
@@ -611,7 +615,9 @@ def train(hyp, opt, device, tb_writer=None):
                 if str(f2).endswith('.pt'):  # is *.pt
                     strip_optimizer(f2)  # strip optimizer
                     # 上传结果到谷歌云盘
-                    os.system('gsutil cp %s gs://%s/weights' % (f2, opt.bucket)) if opt.bucket else None  # upload
+                    # os.system('gsutil cp %s gs://%s/weights' % (f2, opt.bucket)) if opt.bucket else None  # upload
+                    os.system('cp --parents %s %s' % (f2, opt.bucket)) if opt.bucket else None  # upload
+                    print("weights have saved into %s/%s" % (opt.bucket, str(f2)))
 
         # Finish
         # 可视化results.txt文件
@@ -664,7 +670,7 @@ if __name__ == '__main__':
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
-    parser.add_argument('--notest', action='store_true', default=True, help='only test final epoch')
+    parser.add_argument('--notest', action='store_true', help='only test final epoch')
     parser.add_argument('--noautoanchor', action='store_true', help='disable autoanchor check')
     parser.add_argument('--evolve', action='store_true', help='evolve hyperparameters')
     parser.add_argument('--bucket', type=str, default='', help='gsutil bucket')
@@ -691,6 +697,9 @@ if __name__ == '__main__':
     parser.add_argument('--iou-thres', type=float, default=0.4, help='IOU threshold for NMS')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
     parser.add_argument('--agnostic-nms', action='store_true', default=False, help='class-agnostic NMS')
+
+    # Customed
+    parser.add_argument('--auto-upload', action='store_true', default=False, help='class-agnostic NMS')
     opt = parser.parse_args()
 
     # Set DDP variables

@@ -20,51 +20,32 @@ from utils.evaluation_utils import rbox2txt
 
 
 # def detect(save_img=False):
-def detect(opt, weights, device, save_img=False):
-    '''
-    input: save_img_flag
-    output(result):
-    '''
+def detect(opt, weights=None, model=None, save_img=False):
     # 获取输出文件夹，输入路径，权重，参数等参数
     out, source, view_img, save_txt, imgsz = \
         opt.detect_output, opt.detect_source, opt.view_img, opt.save_txt, opt.img_size[0]
-    # webcam = source.isnumeric() or source.startswith(('rtsp://', 'rtmp://', 'http://')) or source.endswith('.txt')
-
-    # out = 'DOTA_demo_view/detection'
-    # source = 'DOTA_demo_view/images/val'
-    # imgsz = 1024
-    # view_img = False
-    # save_txt = True
     webcam = source.isnumeric() or source.startswith(('rtsp://', 'rtmp://', 'http://')) or source.endswith('.txt')
+
+    # Initialize/load model and set device
+    training = model is not None
+    if training:  # called by train.py
+        device = next(model.parameters()).device  # get model device
+    else:
+        device = select_device(opt.device)
+        # 加载Float32模型，确保用户设定的输入图片分辨率能整除最大步长s=32(如不能则调整为能整除并返回)
+        model = attempt_load(weights, map_location=device)  # load FP32 model
+        imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
 
     # Initialize
     set_logging()
-    # 获取设备
-    # device = select_device(opt.device)
     # 移除之前的输出文件夹,并新建输出文件夹
     if os.path.exists(out):
         shutil.rmtree(out)  # delete output folder
     os.makedirs(out)  # make new output folder
     # 如果设备为gpu，使用Float16
     half = device.type != 'cpu'  # half precision only supported on CUDA
-
-    # Load model
-    # 加载Float32模型，确保用户设定的输入图片分辨率能整除最大步长s=32(如不能则调整为能整除并返回)
-    '''
-    model = Model(
-                  (model): Sequential(
-                                       (0): Focus(...)
-                                       (1): Conv(...)
-                                            ...
-                                       (24): Detect(...)
-                    )
-    '''
-    model = attempt_load(weights, map_location=device)  # load FP32 model
-    imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
-
-    # 设置Float16
     if half:
-        model.half()  # to FP16
+        model.half()  # 设置Float16
 
     # Second-stage classifier
     classify = False
@@ -155,7 +136,7 @@ def detect(opt, weights, device, save_img=False):
             save_path = str(Path(out) / Path(p).name)  # 图片保存路径+图片名字
             txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
             #print(txt_path)
-            s += '%gx%g ' % img.shape[2:]  # print string
+            # s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
             if det is not None and len(det):
@@ -165,7 +146,7 @@ def detect(opt, weights, device, save_img=False):
                 # Print results    det:(num_nms_boxes, [xylsθ,conf,classid]) θ∈[0,179]
                 for c in det[:, -1].unique():  # unique函数去除其中重复的元素，并按元素（类别）由大到小返回一个新的无元素重复的元组或者列表
                     n = (det[:, -1] == c).sum()  # detections per class  每个类别检测出来的素含量
-                    s += '%g %ss, ' % (n, names[int(c)])  # add to string 输出‘数量 类别,’
+                    # s += '%g %ss, ' % (n, names[int(c)])  # add to string 输出‘数量 类别,’
 
                 # Write results  det:(num_nms_boxes, [xywhθ,conf,classid]) θ∈[0,179]
                 for *rbox, conf, cls in reversed(det):  # 翻转list的排列结果,改为类别由小到大的排列
@@ -256,4 +237,4 @@ if __name__ == '__main__':
                 # 去除pt文件中的优化器等信息
                 strip_optimizer(opt.weights)
         else:
-            detect(opt, './weights/YOLOv5_DOTA_OBB.pt')
+            detect(opt, weights='./weights/YOLOv5_DOTA_OBB.pt')
