@@ -591,7 +591,7 @@ def train(hyp, opt, device, tb_writer=None):
                 if best_fitness == fi:
                     torch.save(ckpt, best)
                 if opt.auto_upload:  # upload
-                    for item in [last, best, log_dir / f'classAP.csv', log_dir / f'classAP.png']:
+                    for item in [last, best, log_dir / f'classAP.csv', log_dir / f'classAP.png', log_dir / f'results.txt']:
                         os.system('cp --parents %s %s' % (item, opt.auto_upload))
                     print("   Auto-upload completed!")
                 del ckpt
