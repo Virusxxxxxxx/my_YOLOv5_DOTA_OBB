@@ -92,8 +92,8 @@ def voc_ap(rec, prec, use_07_metric=False):
 
 
 def voc_eval(detpath,
-             annopath,
-             imagesetfile,
+             annopath,  # DOTA_demo_view/row_DOTA_labels/
+             imagesetfile,  # DOTA_demo_view/detection/result_txt/imgnamefile.txt
              classname,
              # cachedir,
              ovthresh=0.5,
@@ -131,7 +131,7 @@ def voc_eval(detpath,
     recs = {}
     for i, imagename in enumerate(imagenames):
         # print('parse_files name: ', annopath.format(imagename))
-        recs[imagename] = parse_gt(annopath.format(imagename))
+        recs[imagename] = parse_gt(annopath.format(imagename))  # parse row labels
 
     # extract gt objects for this class
     class_recs = {}
@@ -281,18 +281,21 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     imageset_name_file_path = str(detectionPath + '/result_txt')
 
     # merge检测结果
+    # 将源路径中所有的txt目标信息,经nms后存入目标路径中的同名txt
     mergebypoly(
         result_before_merge_path,
         result_merged_path
     )
 
     # 按照类别分类检测结果
+    # 将result_merged_path文件夹中的所有txt中的目标提取出来,按照目标类别分别存入 Task1_类别名.txt中
     evaluation_trans(
         result_merged_path,
         result_classname_path
     )
 
     # 生成校验数据集名称文件
+    # 将srcpath文件夹下的所有子文件名称打印到namefile.txt中
     image2txt(
         rawImagePath,  # val原图数据集路径
         imageset_name_file_path
@@ -311,6 +314,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     allClassAp = [epoch]
     map = 0
     skippedClassCount = 0
+    print(('%20s' * 2) % ('Class', 'AP'))
     for classname in classnames:
         detfile = detpath.format(classname)
         if not (os.path.exists(detfile)):  # 如果这个类别不存在
@@ -325,7 +329,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
                                  use_07_metric=True)
         map = map + ap
         # print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
-        print('   classname: %-20s   AP: %s' % (classname, ap))
+        print('%20s%20g' % (classname, ap))
         allClassAp.append(ap)
         # classaps.append(ap)
 
@@ -336,7 +340,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
         # plt.plot(rec, prec)
     # plt.show()
     map = map / (len(classnames) - skippedClassCount)
-    print(colorstr('   mAP:'), map)
+    print(colorstr('     mAP:'), map)
     allClassAp.insert(1, map)
 
     with open(resultPath / 'classAP.csv', 'a', encoding='utf-8', newline="") as f_ap:

@@ -17,6 +17,7 @@ from utils.general import (
     xyxy2xywh, plot_one_rotated_box, strip_optimizer, set_logging, rotate_non_max_suppression)
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 from utils.evaluation_utils import rbox2txt
+from tqdm import tqdm
 
 
 # def detect(save_img=False):
@@ -69,7 +70,7 @@ def detect(opt, weights=None, model=None, save_img=False):
     # 获取类别名字    names = ['person', 'bicycle', 'car',...,'toothbrush']
     names = model.module.names if hasattr(model, 'module') else model.names
     # 设置画框的颜色    colors = [[178, 63, 143], [25, 184, 176], [238, 152, 129],....,[235, 137, 120]]随机设置RGB颜色
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    # colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 
     # Run inference
     t0 = time.time()
@@ -77,13 +78,16 @@ def detect(opt, weights=None, model=None, save_img=False):
     img = torch.zeros((1, 3, imgsz, imgsz), device=device)  # init img
     _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
 
+    pbar = enumerate(dataset)
+    pbar = tqdm(pbar, total=len(dataset))
+
     """
-        path 图片/视频路径  'E:\...\bus.jpg'
+        path 图片/视频路径  'DOTA_demo_view/images/val/P0003__1__0___0.png'
         img 进行resize+pad之后的图片   1*3*re_size1*resize2的张量 (3,img_height,img_weight)
         img0 原size图片   (img_height,img_weight,3)          
         cap 当读取图片时为None，读取视频时为视频源   
     """
-    for path, img, im0s, vid_cap in dataset:
+    for i, (path, img, im0s, vid_cap) in pbar:
         # print(img.shape)
         img = torch.from_numpy(img).to(device)
         # 图片也设置为Float16
@@ -103,7 +107,7 @@ def detect(opt, weights=None, model=None, save_img=False):
         z tensor: [small+medium+large_inference]  size=(batch_size, 3 * (small_size1*small_size2 + medium_size1*medium_size2 + large_size1*large_size2), nc)
         x list: [small_forward, medium_forward, large_forward]  eg:small_forward.size=( batch_size, 3种scale框, size1, size2, [xywh,score,num_classes]) 
         '''
-               
+
         前向传播 返回pred[0]的shape是(1, num_boxes, nc)
         h,w为传入网络图片的长和宽，注意dataset在检测时使用了矩形推理，所以这里h不一定等于w
         num_boxes = 3 * h/32 * w/32 + 3 * h/16 * w/16 + 3 * h/8 * w/8
@@ -112,14 +116,17 @@ def detect(opt, weights=None, model=None, save_img=False):
         pred[0][..., 5:5+nc]为分类结果
         pred[0][..., 5+nc:]为Θ分类结果
         """
-        # pred : (batch_size, num_boxes, no)  batch_size=1
+        # pred : (batch_size, boxes, cls)  batch_size=1, cls = 16 + 5 + 180
         pred = model(img)[0]
 
         # Apply NMS
         # 进行NMS
         # pred : list[tensor(batch_size, num_conf_nms, [xylsθ,conf,classid])] θ∈[0,179]
-        #pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        pred = rotate_non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms, without_iouthres=False)
+        # pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+        # pred => xywhθ, conf, classid
+        # iou = 0.6
+        pred = rotate_non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes,
+                                          agnostic=opt.agnostic_nms, without_iouthres=False)
         t2 = time_synchronized()
 
         # Apply Classifier
@@ -135,7 +142,7 @@ def detect(opt, weights=None, model=None, save_img=False):
 
             save_path = str(Path(out) / Path(p).name)  # 图片保存路径+图片名字
             txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
-            #print(txt_path)
+            # print(txt_path)
             # s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
@@ -161,9 +168,9 @@ def detect(opt, weights=None, model=None, save_img=False):
                         classname = '%s' % names[int(cls)]
                         conf_str = '%.3f' % conf
                         rbox2txt(rbox, classname, conf_str, Path(p).stem, str(out + '/result_txt/result_before_merge'))
-                        #plot_one_box(rbox, im0, label=label, color=colors[int(cls)], line_thickness=2)
-                        plot_one_rotated_box(rbox, im0, label=label, color=colors[int(cls)], line_thickness=1,
-                                             pi_format=False)
+                        # plot_one_box(rbox, im0, label=label, color=colors[int(cls)], line_thickness=2)
+                        # plot_one_rotated_box(rbox, im0, label=label, color=colors[int(cls)], line_thickness=1,
+                        #                      pi_format=False)
 
             # Print time (inference + NMS)
             # print('%sDone. (%.3fs)' % (s, t2 - t1))
@@ -175,26 +182,29 @@ def detect(opt, weights=None, model=None, save_img=False):
                     raise StopIteration
 
             # Save results (image with detections)
-            if save_img:
-                if dataset.mode == 'images':
-                    cv2.imwrite(save_path, im0)
-                    pass
-                else:
-                    if vid_path != save_path:  # new video
-                        vid_path = save_path
-                        if isinstance(vid_writer, cv2.VideoWriter):
-                            vid_writer.release()  # release previous video writer
+            # save_img = False
+            # if save_img:
+            #     if dataset.mode == 'images':
+            #         cv2.imwrite(save_path, im0)
+            #         pass
+            #     else:
+            #         if vid_path != save_path:  # new video
+            #             vid_path = save_path
+            #             if isinstance(vid_writer, cv2.VideoWriter):
+            #                 vid_writer.release()  # release previous video writer
+            #
+            #             fourcc = 'mp4v'  # output video codec
+            #             fps = vid_cap.get(cv2.CAP_PROP_FPS)
+            #             w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            #             h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
+            #         vid_writer.write(im0)
+        s = '%90s' % 'detect'
+        pbar.set_description(s)
 
-                        fourcc = 'mp4v'  # output video codec
-                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
-                    vid_writer.write(im0)
-
-    if save_txt or save_img:
-        # print('   Results saved to %s' % Path(out))
-        print('   Detection Done. (%.3f s)' % (time.time() - t0))
+    # if save_txt or save_img:
+    # print('   Results saved to %s' % Path(out))
+    # print('   Detection Done. (%.3f s)' % (time.time() - t0))
 
 
 if __name__ == '__main__':
@@ -214,8 +224,10 @@ if __name__ == '__main__':
         update:如果为True，则对所有模型进行strip_optimizer操作，去除pt文件中的优化器等信息，默认为False
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='./weights/YOLOv5_DOTA_OBB.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='DOTA_demo_view/images', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--weights', nargs='+', type=str, default='./weights/YOLOv5_DOTAv1.5_OBB.pt',
+                        help='model.pt path(s)')
+    parser.add_argument('--source', type=str, default='DOTA_demo_view/images',
+                        help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='DOTA_demo_view/detection', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=1024, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
@@ -237,4 +249,4 @@ if __name__ == '__main__':
                 # 去除pt文件中的优化器等信息
                 strip_optimizer(opt.weights)
         else:
-            detect(opt, weights='./weights/YOLOv5_DOTA_OBB.pt')
+            detect(opt, weights='./weights/YOLOv5_DOTAv1.5_OBB.pt')

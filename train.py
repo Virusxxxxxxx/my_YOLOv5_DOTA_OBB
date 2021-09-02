@@ -76,7 +76,7 @@ def train(hyp, opt, device, tb_writer=None):
     # 设置随机种子
     # 需要在每一个进程设置相同的随机种子，以便所有模型权重都初始化为相同的值，即确保神经网络每次初始化都相同
     init_seeds(2 + rank)
-    # 加载数据配置信息
+    # 加载数据配置信息  data/DOTA_ROTATED.yaml
     with open(opt.data) as f:
         data_dict = yaml.load(f, Loader=yaml.FullLoader)  # data dict
 
@@ -201,10 +201,9 @@ def train(hyp, opt, device, tb_writer=None):
     optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
     logger.info('Optimizer groups: %g .bias, %g conv.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
     del pg0, pg1, pg2
-    
-    
+
     # Freeze
-    #freeze = ['', ]  # parameter names to freeze (full or partial)
+    # freeze = ['', ]  # parameter names to freeze (full or partial)
     freeze = ['model.%s.' % x for x in range(10)]  # 冻结带有'model.0.'-'model.9.'的所有参数 即冻结0-9层的backbone
     if any(freeze):
         for k, v in model.named_parameters():
@@ -219,7 +218,6 @@ def train(hyp, opt, device, tb_writer=None):
     #     if any(x in k for x in freeze):
     #         print(f'freezing {k}')
     #         v.requires_grad = False
-                
 
     # 设置学习率衰减，这里为余弦退火方式进行衰减
     # 就是根据以下公式lf,epoch和超参数hyp['lrf']进行衰减
@@ -382,7 +380,6 @@ def train(hyp, opt, device, tb_writer=None):
         csv_ap = csv.writer(f_ap)
         csv_ap.writerow(['Epoch', 'mAP', *classnames])
 
-
     # 训练
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         # model设置为训练模式，其中training属性表示BatchNorm与Dropout层在训练阶段和测试阶段中采取的策略不同，通过判断training值来决定前向传播策略
@@ -479,7 +476,8 @@ def train(hyp, opt, device, tb_writer=None):
                 # Loss
                 # 计算损失，包括分类损失，objectness损失，框的回归损失
                 # loss为总损失值，loss_items为一个元组(lbox, lobj, lcls, langle, loss)
-                loss, loss_items = compute_loss(pred, targets.to(device), model, csl_label_flag=True)  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device), model,
+                                                csl_label_flag=True)  # loss scaled by batch_size
                 if rank != -1:
                     # 平均不同gpu之间的梯度
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
@@ -592,9 +590,9 @@ def train(hyp, opt, device, tb_writer=None):
                 torch.save(ckpt, last)
                 if best_fitness == fi:
                     torch.save(ckpt, best)
-                if opt.bucket and opt.auto_upload:  # upload
+                if opt.auto_upload:  # upload
                     for item in [last, best, log_dir / f'classAP.csv', log_dir / f'classAP.png']:
-                        os.system('cp --parents %s %s' % (item, opt.bucket))
+                        os.system('cp --parents %s %s' % (item, opt.auto_upload))
                     print("   Auto-upload completed!")
                 del ckpt
         # end epoch ----------------------------------------------------------------------------------------------------
@@ -616,8 +614,8 @@ def train(hyp, opt, device, tb_writer=None):
                     strip_optimizer(f2)  # strip optimizer
                     # 上传结果到谷歌云盘
                     # os.system('gsutil cp %s gs://%s/weights' % (f2, opt.bucket)) if opt.bucket else None  # upload
-                    os.system('cp --parents %s %s' % (f2, opt.bucket)) if opt.bucket else None  # upload
-                    print("weights have saved into %s%s" % (opt.bucket, str(f2)))
+                    os.system('cp --parents %s %s' % (f2, opt.auto_upload)) if opt.auto_upload else None  # upload
+                    print("weights have saved into %s%s" % (opt.auto_upload, str(f2)))
 
         # Finish
         # 可视化results.txt文件
@@ -699,7 +697,7 @@ if __name__ == '__main__':
     parser.add_argument('--agnostic-nms', action='store_true', default=False, help='class-agnostic NMS')
 
     # Customed
-    parser.add_argument('--auto-upload', action='store_true', default=False, help='class-agnostic NMS')
+    parser.add_argument('--auto-upload', type=str, default='', help='Path to auto upload to Google Drive')
     opt = parser.parse_args()
 
     # Set DDP variables
@@ -752,7 +750,8 @@ if __name__ == '__main__':
         torch.cuda.set_device(opt.local_rank)
         device = torch.device('cuda', opt.local_rank)
         # 初始化进程组
-        dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend 一般来说使用NCCL对于GPU分布式训练，使用gloo对CPU进行分布式训练
+        dist.init_process_group(backend='nccl',
+                                init_method='env://')  # distributed backend 一般来说使用NCCL对于GPU分布式训练，使用gloo对CPU进行分布式训练
         assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'
         # 将总批次按照进程数分配给各个gpu
         opt.batch_size = opt.total_batch_size // opt.world_size
