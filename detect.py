@@ -47,6 +47,7 @@ def detect(opt, weights=None, model=None, save_img=False):
     half = device.type != 'cpu'  # half precision only supported on CUDA
     if half:
         model.half()  # 设置Float16
+    model.eval()
 
     # Second-stage classifier
     classify = False
@@ -75,8 +76,9 @@ def detect(opt, weights=None, model=None, save_img=False):
     # Run inference
     t0 = time.time()
     # 进行一次前向推理,测试程序是否正常  向量维度（1，3，imgsz，imgsz）
-    img = torch.zeros((1, 3, imgsz, imgsz), device=device)  # init img
-    _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
+    if not training:
+        if device.type != 'cpu':
+            model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
 
     pbar = enumerate(dataset)
     pbar = tqdm(pbar, total=len(dataset))
@@ -98,8 +100,6 @@ def detect(opt, weights=None, model=None, save_img=False):
             # (in_channels,size1,size2) to (1,in_channels,img_height,img_weight)
             img = img.unsqueeze(0)  # 在[0]维增加一个维度
 
-        # Inference
-        t1 = time_synchronized()
         """
         model:
         input: in_tensor (batch_size, 3, img_height, img_weight)
@@ -116,18 +116,21 @@ def detect(opt, weights=None, model=None, save_img=False):
         pred[0][..., 5:5+nc]为分类结果
         pred[0][..., 5+nc:]为Θ分类结果
         """
-        # pred : (batch_size, boxes, cls)  batch_size=1, cls = 16 + 5 + 180
-        pred = model(img)[0]
+        with torch.no_grad():
+            # Inference
+            t1 = time_synchronized()
+            # pred : (batch_size, boxes, cls)  batch_size=1, cls = 16 + 5 + 180
+            pred = model(img)[0]
 
-        # Apply NMS
-        # 进行NMS
-        # pred : list[tensor(batch_size, num_conf_nms, [xylsθ,conf,classid])] θ∈[0,179]
-        # pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        # pred => xywhθ, conf, classid
-        # iou = 0.6
-        pred = rotate_non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes,
+            # Apply NMS
+            # 进行NMS
+            # pred : list[tensor(batch_size, num_conf_nms, [xylsθ,conf,classid])] θ∈[0,179]
+            # pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+            # pred => xywhθ, conf, classid
+            # iou = 0.6
+            pred = rotate_non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes,
                                           agnostic=opt.agnostic_nms, without_iouthres=False)
-        t2 = time_synchronized()
+            t2 = time_synchronized()
 
         # Apply Classifier
         if classify:
@@ -202,6 +205,7 @@ def detect(opt, weights=None, model=None, save_img=False):
         s = '%90s' % 'detect'
         pbar.set_description(s)
 
+    model.float()  # for training
     # if save_txt or save_img:
     # print('   Results saved to %s' % Path(out))
     # print('   Detection Done. (%.3f s)' % (time.time() - t0))
