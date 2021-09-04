@@ -6,9 +6,10 @@ train: DOTA_demo_view/images/train
 val: DOTA_demo_view/images/val
 
 # number of classes
-nc: 16
+nc: 2
 
 # class names
-names: [ 'plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
-         'tennis-court', 'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor',
-         'swimming-pool', 'helicopter', 'container-crane' ]
+#names: [ 'plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
+#         'tennis-court', 'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor',
+#         'swimming-pool', 'helicopter', 'container-crane' ]
+names: [ 'small-vehicle', 'ship']

@@ -804,6 +804,16 @@ def compute_loss(p, targets, model, csl_label_flag=True):
 
 def build_targets(p, targets, model):
     """
+        build_targets函数用于获得在训练时计算loss函数所需要的目标框，即被认为是正样本
+        与yolov3/v4的不同:yolov5支持跨网格预测
+        对于任何一个bbox，三个输出预测特征层都可能有先验框anchors匹配;
+        该函数输出的正样本框比传入的targets (GT框）数目多
+        具体处理过程:
+        (1)对于任何一层计算当前bbox和当前层anchor的匹配程度，不采用iou，而是shape比例;
+            如果anchor和bbox的宽高比差距大于4，则认为不匹配，此时忽略相应的bbox，即当做背景;
+        (2)然后对bbox计算落在的网格所有anchors都计算loss(并不是直接和GT框比较计算loss)
+            注意此时落在网格不再是一个，而是附近的多个，这样就增加了正样本数，可能存在有些bbox在三个尺度都预测的情况;
+            另外，yolov5也没有conf分支忽略阈值(ignore_thresh)的操作，而yolov3/v4有。
         Build targets for compute_loss(), input targets(image,class,x,y,w,h)；
     Args :
         predictions :[small_forward, medium_forward, large_forward]  eg:small_forward.size=( batch_size, 3种scale框, size1, size2, no)
