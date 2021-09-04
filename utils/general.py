@@ -2211,3 +2211,28 @@ def plotChart(filename, saveDir):
         plt.ylabel("mAP")
     plt.grid()
     plt.savefig(saveDir + '/' + filename + ".png")
+
+
+def plotChart_interest(filename, saveDir):
+    file = saveDir + '/' + filename + ".csv"
+    with open(file) as f:
+        reader = csv.reader(f)
+        head_row = next(reader)  # 表头
+        x = []
+        y1 = []
+        y2 = []
+        for row in reader:
+            x.append(float(row[0]))
+            y1.append(float(row[2]))
+            y2.append(float(row[3]))
+
+    plt.figure(dpi=128, figsize=(10, 6))
+    l1, = plt.plot(x, y1, label='small-vehicle', color='red')
+    l2, = plt.plot(x, y2, label='ship')
+    plt.title(filename, fontsize=24)
+    plt.legend(handles=[l1, l2], labels=['small-vehicle', 'ship'], loc='best')
+    if filename in ["classAP"]:
+        plt.xlabel("epoch")
+        plt.ylabel("AP")
+    plt.grid()
+    plt.savefig(saveDir + '/' + filename + ".png")

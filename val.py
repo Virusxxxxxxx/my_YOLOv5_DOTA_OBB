@@ -18,7 +18,7 @@ from utils import polyiou
 from functools import partial
 import pdb
 from utils.evaluation_utils import mergebypoly, evaluation_trans, image2txt, draw_DOTA_image
-from utils.general import colorstr, plotChart
+from utils.general import colorstr, plotChart, plotChart_interest
 
 
 def parse_gt(filename):
@@ -270,10 +270,12 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     # @param classnames: 测试集中的目标种类
     """
     # For DOTA-v1.5
-    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle',
-                  'large-vehicle', 'ship', 'tennis-court', 'basketball-court', 'storage-tank',
-                  'soccer-ball-field', 'roundabout', 'harbor',
-                  'swimming-pool', 'helicopter', 'container-crane']
+    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle',
+    #               'large-vehicle', 'ship', 'tennis-court', 'basketball-court', 'storage-tank',
+    #               'soccer-ball-field', 'roundabout', 'harbor',
+    #               'swimming-pool', 'helicopter', 'container-crane']
+    # For interest
+    classnames = ['small-vehicle', 'ship']
 
     result_before_merge_path = str(detectionPath + '/result_txt/result_before_merge')
     result_merged_path = str(detectionPath + '/result_txt/result_merged')
@@ -339,7 +341,10 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
         # plt.ylabel('precision')
         # plt.plot(rec, prec)
     # plt.show()
-    map = map / (len(classnames) - skippedClassCount)
+    if skippedClassCount != len(classnames):
+        map = map / (len(classnames) - skippedClassCount)
+    else:
+        map = 0
     print(colorstr('     mAP:'), map)
     allClassAp.insert(1, map)
 
@@ -347,7 +352,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
         csv_ap = csv.writer(f_ap)
         csv_ap.writerow(allClassAp)
 
-    plotChart("classAP", str(resultPath))
+    plotChart_interest("classAP", str(resultPath))
     # classaps = 100 * np.array(classaps)
     # print('classaps: ', classaps)
 

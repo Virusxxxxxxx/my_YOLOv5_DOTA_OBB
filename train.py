@@ -33,10 +33,11 @@ from val import *
 
 logger = logging.getLogger(__name__)
 
-classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
-              'tennis-court',
-              'basketball-court', 'storage-tank', 'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool',
-              'helicopter', 'container-crane']
+# classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship',
+#               'tennis-court',
+#               'basketball-court', 'storage-tank', 'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool',
+#               'helicopter', 'container-crane']
+classnames = ['small-vehicle', 'ship']
 
 
 def train(hyp, opt, device, tb_writer=None):
