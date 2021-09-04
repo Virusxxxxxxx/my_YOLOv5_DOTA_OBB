@@ -294,7 +294,8 @@ def scale_labels(img1_shape, labels, img0_shape, ratio_pad=None):
         theta = rect_scale[-1]  # Range for angle is [-90，0)
 
         label = np.array(cvminAreaRect2longsideformat(c_x, c_y, w, h, theta))
-
+        if not label.all():  # 如果minAreaRect出现bug，那么cvminAreaRect2longsideformat就会返回False
+            continue
         label[-1] = int(label[-1] + 180.5)  # range int[0,180] 四舍五入
         if label[-1] == 180:  # range int[0,179]
             label[-1] = 179
