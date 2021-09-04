@@ -204,20 +204,20 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Freeze
     # freeze = ['', ]  # parameter names to freeze (full or partial)
-    freeze = ['model.%s.' % x for x in range(10)]  # 冻结带有'model.0.'-'model.9.'的所有参数 即冻结0-9层的backbone
-    if any(freeze):
-        for k, v in model.named_parameters():
-            if any(x in k for x in freeze):
-                print('freezing %s' % k)
-                v.requires_grad = False
+    # freeze = ['model.%s.' % x for x in range(10)]  # 冻结带有'model.0.'-'model.9.'的所有参数 即冻结0-9层的backbone
+    # if any(freeze):
+    #     for k, v in model.named_parameters():
+    #         if any(x in k for x in freeze):
+    #             print('freezing %s' % k)
+    #             v.requires_grad = False
     # my code from yolov5
-    # freeze = opt.freeze
-    # freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
-    # for k, v in model.named_parameters():
-    #     v.requires_grad = True  # train all layers
-    #     if any(x in k for x in freeze):
-    #         print(f'freezing {k}')
-    #         v.requires_grad = False
+    freeze = opt.freeze
+    freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
+    for k, v in model.named_parameters():
+        v.requires_grad = True  # train all layers
+        if any(x in k for x in freeze):
+            print(f'freezing {k}')
+            v.requires_grad = False
 
     # 设置学习率衰减，这里为余弦退火方式进行衰减
     # 就是根据以下公式lf,epoch和超参数hyp['lrf']进行衰减
