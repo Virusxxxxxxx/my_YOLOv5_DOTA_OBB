@@ -280,8 +280,8 @@ def scale_labels(img1_shape, labels, img0_shape, ratio_pad=None):
         # poly = [(x1,y1),(x2,y2),(x3,y3),(x4,y4)]
         poly = cv2.boxPoints(rect)  # 返回rect对应的四个点的值 normalized
 
-        poly[:, 0] -= pad[0]   # x padding
-        poly[:, 1] -= pad[1]   # y padding
+        poly[:, 0] -= pad[0]  # x padding
+        poly[:, 1] -= pad[1]  # y padding
         poly[:, :] /= gain
         clip_poly(poly, img0_shape)
 
@@ -294,8 +294,10 @@ def scale_labels(img1_shape, labels, img0_shape, ratio_pad=None):
         theta = rect_scale[-1]  # Range for angle is [-90，0)
 
         label = np.array(cvminAreaRect2longsideformat(c_x, c_y, w, h, theta))
-        if not label.all():  # 如果minAreaRect出现bug，那么cvminAreaRect2longsideformat就会返回False
+        if label.size == 1:  # 如果minAreaRect出现bug，那么cvminAreaRect2longsideformat就会返回False
+            scaled_labels.append([0, 0, 0, 0, 0])  # 直接传全0，在rbox2txt里筛
             continue
+
         label[-1] = int(label[-1] + 180.5)  # range int[0,180] 四舍五入
         if label[-1] == 180:  # range int[0,179]
             label[-1] = 179
@@ -310,6 +312,7 @@ def clip_poly(poly, img_shape):
     '''
     poly[:, 0].clip(0, img_shape[1])  # x
     poly[:, 1].clip(0, img_shape[0])  # y
+
 
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, fname='precision-recall_curve.png'):
     """ Compute the average precision, given the recall and precision curves.
@@ -492,7 +495,7 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=
     w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
     union = w1 * h1 + w2 * h2 - inter + eps
 
-    iou = inter / union   # IoU= (A∩B)/(A∪B)
+    iou = inter / union  # IoU= (A∩B)/(A∪B)
     if GIoU or DIoU or CIoU:
         cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width 并集外接矩形的宽
         ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height 并集外接矩形的高
@@ -600,6 +603,7 @@ class BCEBlurWithLogitsLoss(nn.Module):
         loss *= alpha_factor
         return loss.mean()
 
+
 def gaussian_label(label, num_class, u=0, sig=4.0):
     '''
     转换成CSL Labels：
@@ -618,6 +622,7 @@ def gaussian_label(label, num_class, u=0, sig=4.0):
     # 将高斯函数的最高值设置在θ所在的位置，例如label为45，则将高斯分布数列向右移动直至x轴为45时，取值为1
     return np.concatenate([y_sig[math.ceil(num_class / 2) - int(label.item()):],
                            y_sig[:math.ceil(num_class / 2) - int(label.item())]], axis=0)
+
 
 def rbox_iou(box1, theta1, box2, theta2):
     """
@@ -647,7 +652,6 @@ def rbox_iou(box1, theta1, box2, theta2):
     IoUs = np.array(IoUs)
 
     return IoUs
-
 
 
 def compute_loss(p, targets, model, csl_label_flag=True):
@@ -948,13 +952,13 @@ def build_targets(p, targets, model):
         gwh = t[:, 4:6]  # grid wh  wh_featuremap
         gij = (gxy - offsets).long()  # featuremap上的gt真实xy坐标减去偏移量再取整  即计算当前label落在哪个网格坐标上
         gi, gj = gij.T  # grid xy indices 将x轴坐标信息压入gi 将y轴坐标索引信息压入gj 负责预测网格具体的整数坐标 比如 23， 2
-        gi = torch.clamp(gi, 0, num_w-1)  # 确保网格索引不会超过数组的限制
-        gj = torch.clamp(gj, 0, num_h-1)
+        gi = torch.clamp(gi, 0, num_w - 1)  # 确保网格索引不会超过数组的限制
+        gj = torch.clamp(gj, 0, num_h - 1)
 
         # Append
         a = t[:, 7].long()  # anchor indices  表示用第几个anchor进行检测 shape(3*M, 1)
         indices.append((b, a, gj, gi))  # image_index, anchor_index, grid indices ; 每个预测层的shape(4, 3*M)
-        tbox.append(torch.cat((gxy - gij, gwh), 1))  # 每个预测层的box shape(3*M, 4)  其中xy:当前featuremap尺度上的真实gt xy与负责预测网格坐标的偏移量  wh：当前featuremap尺度上的真实gt wh
+        tbox.append(torch.cat((gxy - gij, gwh),1))  # 每个预测层的box shape(3*M, 4)  其中xy:当前featuremap尺度上的真实gt xy与负责预测网格坐标的偏移量  wh：当前featuremap尺度上的真实gt wh
         anch.append(anchors[a])  # anchors  每个预测层的shape(3*M, 2) 当前featuremap尺度上的anchor wh
         tcls.append(c)  # class  每个预测层的shape(3*M, 1)
         tangle.append(angle)  # angle 每个预测层的shape(3*M, 1)
@@ -1030,7 +1034,6 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
         # box.size = (num_confthres_boxes, [xywhθ])  θ ∈ [-pi/2, pi/2) length=180
         box = torch.cat((x[:, :4], (angle_index - 90) * np.pi / 180), 1)
 
-
         # Detections matrix nx7 (xywhθ, conf, clsid) θ ∈ [-pi/2, pi/2)
         if multi_label:
             # nonzero ： 取出每个轴的索引,默认是非0元素的索引（取出括号公式中的为True的元素对应的索引） 将索引号放入i和j中
@@ -1068,8 +1071,6 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
         boxes, scores = x[:, :5], x[:, 5]  # boxes[x, y, w, h, θ] θ is 弧度制[-pi/2, pi/2)
         boxes[:, :4] = boxes[:, :4] + c  # boxes xywh(offset by class)
 
-
-
         if i.shape[0] > max_det:  # limit detections  限制单帧图片中检测出的目标数量
             i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
@@ -1090,6 +1091,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
 
     return output
 
+
 def get_rotated_coors(box):
     """
     return box coors
@@ -1101,29 +1103,30 @@ def get_rotated_coors(box):
     xmin = cx - w*0.5; xmax = cx + w*0.5; ymin = cy - h*0.5; ymax = cy + h*0.5
     t_x0=xmin; t_y0=ymin; t_x1=xmin; t_y1=ymax; t_x2=xmax; t_y2=ymax; t_x3=xmax; t_y3=ymin
     R = np.eye(3)
-    R[:2] = cv2.getRotationMatrix2D(angle=-a*180/math.pi, center=(cx,cy), scale=1)  # 获得仿射变化矩阵
-    x0 = t_x0*R[0,0] + t_y0*R[0,1] + R[0,2]
-    y0 = t_x0*R[1,0] + t_y0*R[1,1] + R[1,2]
-    x1 = t_x1*R[0,0] + t_y1*R[0,1] + R[0,2]
-    y1 = t_x1*R[1,0] + t_y1*R[1,1] + R[1,2]
-    x2 = t_x2*R[0,0] + t_y2*R[0,1] + R[0,2]
-    y2 = t_x2*R[1,0] + t_y2*R[1,1] + R[1,2]
-    x3 = t_x3*R[0,0] + t_y3*R[0,1] + R[0,2]
-    y3 = t_x3*R[1,0] + t_y3*R[1,1] + R[1,2]
+    R[:2] = cv2.getRotationMatrix2D(angle=-a * 180 / math.pi, center=(cx, cy), scale=1)  # 获得仿射变化矩阵
+    x0 = t_x0 * R[0, 0] + t_y0 * R[0, 1] + R[0, 2]
+    y0 = t_x0 * R[1, 0] + t_y0 * R[1, 1] + R[1, 2]
+    x1 = t_x1 * R[0, 0] + t_y1 * R[0, 1] + R[0, 2]
+    y1 = t_x1 * R[1, 0] + t_y1 * R[1, 1] + R[1, 2]
+    x2 = t_x2 * R[0, 0] + t_y2 * R[0, 1] + R[0, 2]
+    y2 = t_x2 * R[1, 0] + t_y2 * R[1, 1] + R[1, 2]
+    x3 = t_x3 * R[0, 0] + t_y3 * R[0, 1] + R[0, 2]
+    y3 = t_x3 * R[1, 0] + t_y3 * R[1, 1] + R[1, 2]
 
-    if isinstance(x0,torch.Tensor):
-        r_box=torch.cat([x0.unsqueeze(0),y0.unsqueeze(0),
-                         x1.unsqueeze(0),y1.unsqueeze(0),
-                         x2.unsqueeze(0),y2.unsqueeze(0),
-                         x3.unsqueeze(0),y3.unsqueeze(0)], 0)
+    if isinstance(x0, torch.Tensor):
+        r_box = torch.cat([x0.unsqueeze(0), y0.unsqueeze(0),
+                           x1.unsqueeze(0), y1.unsqueeze(0),
+                           x2.unsqueeze(0), y2.unsqueeze(0),
+                           x3.unsqueeze(0), y3.unsqueeze(0)], 0)
     else:
-        r_box = np.array([x0,y0,x1,y1,x2,y2,x3,y3])
+        r_box = np.array([x0, y0, x1, y1, x2, y2, x3, y3])
     return r_box
 
+
 # anchor对齐阶段计算iou
-def skewiou(box1, box2,mode='iou',return_coor = False):
-    a=box1.reshape(4, 2)
-    b=box2.reshape(4, 2)
+def skewiou(box1, box2, mode='iou', return_coor=False):
+    a = box1.reshape(4, 2)
+    b = box2.reshape(4, 2)
     # 所有点的最小凸的表示形式，四边形对象，会自动计算四个点，最后顺序为：左上 左下  右下 右上 左上
     poly1 = Polygon(a).convex_hull
     poly2 = Polygon(b).convex_hull
@@ -1134,18 +1137,18 @@ def skewiou(box1, box2,mode='iou',return_coor = False):
         return 0
 
     inter = Polygon(poly1).intersection(Polygon(poly2)).area
-    if   mode == 'iou':
+    if mode == 'iou':
         union = poly1.area + poly2.area - inter
-    elif mode =='tiou':
-        union_poly = np.concatenate((a,b))   #合并两个box坐标，变为8*2
+    elif mode == 'tiou':
+        union_poly = np.concatenate((a, b))  # 合并两个box坐标，变为8*2
         union = MultiPoint(union_poly).convex_hull.area
         coors = MultiPoint(union_poly).convex_hull.wkt
     elif mode == 'giou':
-        union_poly = np.concatenate((a,b))
+        union_poly = np.concatenate((a, b))
         union = MultiPoint(union_poly).envelope.area
         coors = MultiPoint(union_poly).envelope.wkt
     elif mode == 'r_giou':
-        union_poly = np.concatenate((a,b))
+        union_poly = np.concatenate((a, b))
         union = MultiPoint(union_poly).minimum_rotated_rectangle.area
         coors = MultiPoint(union_poly).minimum_rotated_rectangle.wkt
     else:
@@ -1155,9 +1158,10 @@ def skewiou(box1, box2,mode='iou',return_coor = False):
         return 0
     else:
         if return_coor:
-            return inter/union,coors
+            return inter / union, coors
         else:
-            return inter/union
+            return inter / union
+
 
 def py_cpu_nms_poly_fast(dets, scores, thresh):
     """
@@ -1178,16 +1182,16 @@ def py_cpu_nms_poly_fast(dets, scores, thresh):
     polys = []
     for i in range(len(dets)):
         tm_polygon = polyiou.VectorDouble([dets[i][0], dets[i][1],
-                                            dets[i][2], dets[i][3],
-                                            dets[i][4], dets[i][5],
-                                            dets[i][6], dets[i][7]])
+                                           dets[i][2], dets[i][3],
+                                           dets[i][4], dets[i][5],
+                                           dets[i][6], dets[i][7]])
         polys.append(tm_polygon)
     order = scores.argsort()[::-1]  # argsort将元素小到大排列 返回索引值 [::-1]即从后向前取元素
 
     keep = []
     while order.size > 0:
         ovr = []
-        i = order[0]   # 取出当前剩余置信度最大的目标边框的索引
+        i = order[0]  # 取出当前剩余置信度最大的目标边框的索引
         keep.append(i)
         # if order.size == 0:
         #     break
@@ -1229,6 +1233,7 @@ def py_cpu_nms_poly_fast(dets, scores, thresh):
         # order = np.concatenate((order_obb, order_hbb), axis=0).astype(np.int)
     return keep
 
+
 def py_cpu_nms_poly(dets, scores, thresh):
     """
     任意四点poly nms.取出nms后的边框的索引
@@ -1240,9 +1245,9 @@ def py_cpu_nms_poly(dets, scores, thresh):
     polys = []
     for i in range(len(dets)):
         tm_polygon = polyiou.VectorDouble([dets[i][0], dets[i][1],
-                                            dets[i][2], dets[i][3],
-                                            dets[i][4], dets[i][5],
-                                            dets[i][6], dets[i][7]])
+                                           dets[i][2], dets[i][3],
+                                           dets[i][4], dets[i][5],
+                                           dets[i][6], dets[i][7]])
         polys.append(tm_polygon)
 
     # argsort将元素小到大排列 返回索引值 [::-1]即从后向前取元素
@@ -1260,7 +1265,9 @@ def py_cpu_nms_poly(dets, scores, thresh):
         order = order[inds + 1]
     return keep
 
-def rotate_non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False, without_iouthres=False):
+
+def rotate_non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False,
+                               without_iouthres=False):
     """
     Performs Rotate-Non-Maximum Suppression (RNMS) on inference results；
     @param prediction: size=(batch_size, num, [xywh,score,num_classes,num_angles])
@@ -1327,7 +1334,7 @@ def rotate_non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=
         # Filter by class 按类别筛选
         if classes:
             # list x：(num_confthres_boxes, [xywhθ,conf,classid])
-            x = x[(x[:, 6:7] == torch.tensor(classes, device=x.device)).any(1)] # any（1）函数表示每行满足条件的返回布尔值
+            x = x[(x[:, 6:7] == torch.tensor(classes, device=x.device)).any(1)]  # any（1）函数表示每行满足条件的返回布尔值
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():
@@ -1351,7 +1358,7 @@ def rotate_non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=
             rect = longsideformat2poly(box_xy[0], box_xy[1], box_whthetas[i][0], box_whthetas[i][1], box_whthetas[i][2])
             rects.append(rect)
         i = np.array(py_cpu_nms_poly_fast(np.array(rects), np.array(scores.cpu()), iou_thres))
-        #i = nms(boxes, scores)  # i为数组，里面存放着boxes中经nms后的索引
+        # i = nms(boxes, scores)  # i为数组，里面存放着boxes中经nms后的索引
 
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
@@ -1372,6 +1379,7 @@ def rotate_non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=
             break  # time limit exceeded
 
     return output
+
 
 def strip_optimizer(f='weights/best.pt', s=''):  # from utils.general import *; strip_optimizer()
     # Strip optimizer from 'f' to finalize training, optionally save as 's'
@@ -1706,6 +1714,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
         cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
         cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
+
 def longsideformat2poly(x_c, y_c, longside, shortside, theta_longside):
     '''
     trans longside format(x_c, y_c, longside, shortside, θ) θ ∈ [0-179]    to  poly
@@ -1722,6 +1731,7 @@ def longsideformat2poly(x_c, y_c, longside, shortside, theta_longside):
     poly = np.double(cv2.boxPoints(rect))  # 返回rect对应的四个点的值 normalized
     poly.shape = 8
     return poly
+
 
 def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
     '''
@@ -1754,7 +1764,8 @@ def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
 
     if theta > 0:
         if theta != 90:  # Θ=90说明wh中有为0的元素，即gt信息不完整，无需提示异常，直接删除
-            print('θ计算出现异常，当前数据为：%.16f, %.16f, %.16f, %.16f, %.1f;超出opencv表示法的范围：[-90,0)' % (x_c, y_c, width, height, theta))
+            print('θ计算出现异常，当前数据为：%.16f, %.16f, %.16f, %.16f, %.1f;超出opencv表示法的范围：[-90,0)' % (
+            x_c, y_c, width, height, theta))
         return False
 
     if theta < -90:
@@ -1771,13 +1782,16 @@ def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
         theta_longside = theta
 
     if longside < shortside:
-        print('旋转框转换表示形式后出现问题：最长边小于短边;[%.16f, %.16f, %.16f, %.16f, %.1f]' % (x_c, y_c, longside, shortside, theta_longside))
+        print('旋转框转换表示形式后出现问题：最长边小于短边;[%.16f, %.16f, %.16f, %.16f, %.1f]' % (
+        x_c, y_c, longside, shortside, theta_longside))
         return False
     if (theta_longside < -180 or theta_longside >= 0):
-        print('旋转框转换表示形式时出现问题:θ超出长边表示法的范围：[-180,0);[%.16f, %.16f, %.16f, %.16f, %.1f]' % (x_c, y_c, longside, shortside, theta_longside))
+        print('旋转框转换表示形式时出现问题:θ超出长边表示法的范围：[-180,0);[%.16f, %.16f, %.16f, %.16f, %.1f]' % (
+        x_c, y_c, longside, shortside, theta_longside))
         return False
 
     return x_c, y_c, longside, shortside, theta_longside
+
 
 def longsideformat2cvminAreaRect(x_c, y_c, longside, shortside, theta_longside):
     '''
@@ -1803,13 +1817,14 @@ def longsideformat2cvminAreaRect(x_c, y_c, longside, shortside, theta_longside):
         theta = theta_longside + 90
     else:
         width = longside
-        height =shortside
+        height = shortside
         theta = theta_longside
 
     if (theta < -90) or (theta >= 0):
         print('当前θ=%.1f，超出opencv的θ定义范围[-90, 0)' % theta)
 
     return ((x_c, y_c), (width, height), theta)
+
 
 def plot_one_rotated_box(rbox, img, color=None, label=None, line_thickness=None, pi_format=True):
     '''
@@ -1826,7 +1841,7 @@ def plot_one_rotated_box(rbox, img, color=None, label=None, line_thickness=None,
 
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
     color = color or [random.randint(0, 255) for _ in range(3)]
-    #rbox = np.array(x)
+    # rbox = np.array(x)
     if pi_format:  # θ∈[-pi/2,pi/2)
         rbox[-1] = (rbox[-1] * 180 / np.pi) + 90  # θ∈[0,179]
 
@@ -1836,7 +1851,7 @@ def plot_one_rotated_box(rbox, img, color=None, label=None, line_thickness=None,
     poly = np.float32(cv2.boxPoints(rect))  # 返回rect对应的四个点的值
     poly = np.int0(poly)
     # 画出来
-    cv2.drawContours(image=img, contours=[poly], contourIdx=-1, color=color, thickness=2*tl)
+    cv2.drawContours(image=img, contours=[poly], contourIdx=-1, color=color, thickness=2 * tl)
     c1 = (int(rbox[0]), int(rbox[1]))
     if label:
         tf = max(tl - 1, 1)  # font thickness
@@ -1844,8 +1859,6 @@ def plot_one_rotated_box(rbox, img, color=None, label=None, line_thickness=None,
         c2 = c1[0] + t_size[0], c1[1] - t_size[1] - 3
         cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
         cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 4, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
-
-
 
 
 def plot_wh_methods():  # from utils.general import *; plot_wh_methods()
@@ -1948,7 +1961,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
                 cls = names[cls] if names else cls
                 if gt or conf[j] > 0.3:  # 0.3 conf thresh
                     label = '%s' % cls if gt else '%s %.1f' % (cls, conf[j])
-                    #plot_one_box(box, mosaic, label=label, color=color, line_thickness=tl)
+                    # plot_one_box(box, mosaic, label=label, color=color, line_thickness=tl)
                     plot_one_rotated_box(rbox, mosaic, label=label, color=color, line_thickness=tl,
                                          pi_format=False)
 
@@ -2134,7 +2147,7 @@ def plot_results(start=0, stop=0, bucket='', id=(), labels=(), save_dir=''):
     # Plot training 'results*.txt' as seen in https://github.com/ultralytics/yolov5#reproduce-our-training
     fig, ax = plt.subplots(2, 6, figsize=(12, 6))
     ax = ax.ravel()
-    s = ['Box', 'Objectness', 'Classification', 'Angle', 'Total_Loss','Precision', 'Recall',
+    s = ['Box', 'Objectness', 'Classification', 'Angle', 'Total_Loss', 'Precision', 'Recall',
          'val Box', 'val Objectness', 'val Classification', 'mAP@0.5', 'mAP@0.5:0.95']
     if bucket:
         # os.system('rm -rf storage.googleapis.com')

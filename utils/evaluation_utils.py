@@ -243,7 +243,10 @@ def rbox2txt(rbox, classname, conf, img_name, out_path, pi_format=False):
     if isinstance(rbox, torch.Tensor):
         rbox = rbox.cpu().float().numpy()
 
-    #rbox = np.array(x)
+    if np.all(rbox == 0):  # 跳过错误的rbox
+        return
+
+    # rbox = np.array(x)
     if pi_format:  # θ∈[-pi/2,pi/2)
         rbox[-1] = (rbox[-1] * 180 / np.pi) + 90  # θ∈[0,179]
 
