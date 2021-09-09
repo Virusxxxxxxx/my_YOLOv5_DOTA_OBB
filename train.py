@@ -659,11 +659,11 @@ if __name__ == '__main__':
         workers:dataloader的最大worker数量
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='weights/YOLOv5_DOTAv1.5_OBB.pt', help='initil weights path')
+    parser.add_argument('--weights', type=str, default='weights/yolov5m_30.pt', help='initil weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/DOTA_ROTATED.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--epochs', type=int, default=32)
     parser.add_argument('--batch-size', type=int, default=4, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[1024, 1024], help='[train, test] image sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')

@@ -243,3 +243,10 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+/DOTA_demo_view/images/train/
+/DOTA_demo_view/images/val/
+/DOTA_demo_view/labels/train/
+/DOTA_demo_view/labels/val/
+/DOTA_demo_view/row_DOTA_labels/
+/DOTA_demo_view/row_images/
+/DOTA_demo_view/detection/
