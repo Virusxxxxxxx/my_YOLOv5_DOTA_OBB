@@ -19,7 +19,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import test  # import test.py to get mAP after each epoch
+# import test  # import test.py to get mAP after each epoch
 from models.yolo import Model
 from utils.datasets import create_dataloader
 from utils.general import (
@@ -146,7 +146,15 @@ def train(hyp, opt, device, tb_writer=None):
         exclude = ['anchor'] if opt.cfg or hyp.get('anchors') else []  # exclude keys
         # state_dict变量存放训练过程中需要学习的权重和偏置系数，state_dict 是一个python的字典格式,以字典的格式存储,然后以字典的格式被加载,而且只加载key匹配的项
         # 将ckpt中的‘model’中的”可训练“的每一层的参数建立映射关系（如 'conv1.weight'： 数值...）存在state_dict中
-        state_dict = ckpt['model'].float().state_dict()  # to FP32
+        state_dict = {}
+        if opt.cfg is not None and 'SELayer' in opt.cfg:
+            backbone = [f'model.{x}.' for x in range(10)]  # backbone keys
+            pt_state_dict = ckpt['model'].float().state_dict()  # to FP32
+            for k, v in pt_state_dict.items():  # items() to get k, v
+                if any(x in k for x in backbone):
+                    state_dict.update({k: v})
+        else:
+            state_dict = ckpt['model'].float().state_dict()  # to FP32
         # 加载除了与exclude以外，所有与key匹配的项的参数  即将权重文件中的参数导入对应层中
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
         # 将最终模型参数导入yolo模型
