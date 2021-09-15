@@ -383,7 +383,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
-        elif m is SELayer: # add SELayer
+        elif m is SELayer:  # add SELayer
             channel, re = args[0], args[1]
             channel = make_divisible(channel*gw, 8) if channel != no else channel
             args = [channel, re]

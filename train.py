@@ -104,7 +104,7 @@ def train(hyp, opt, device, tb_writer=None):
         with torch_distributed_zero_first(rank):
             attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location=device)  # load checkpoint 导入权重文件
-        """
+        """ ???存疑
             这里模型创建，可通过opt.cfg，也可通过ckpt['model'].yaml
             这里的区别在于是否是resume，resume时会将opt.cfg设为空，
             则按照ckpt['model'].yaml创建模型；
@@ -128,6 +128,7 @@ def train(hyp, opt, device, tb_writer=None):
               'optimizer': None
               }
         '''
+        # 只要在超参文件里指定了anchors大小，那必定就会覆盖权重里的anchors
         if hyp.get('anchors'):  # 用户自定义的anchors优先级大于权重文件中自带的anchors
             ckpt['model'].yaml['anchors'] = round(hyp['anchors'])  # force autoanchor
         # 创建并初始化yolo模型
@@ -725,6 +726,7 @@ if __name__ == '__main__':
     # Resume
     '''
         是否从断点开始训练
+        这个参数的作用是自动读取上一次run/exp里面的权重，然后做一些衔接的工作
     '''
     if opt.resume:  # resume an interrupted run
         # 如果resume的参数是str,则表示传入的是最新的断点模型的路径地址,直接导入last模型进行训练
