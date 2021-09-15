@@ -148,7 +148,7 @@ def train(hyp, opt, device, tb_writer=None):
         # 将ckpt中的‘model’中的”可训练“的每一层的参数建立映射关系（如 'conv1.weight'： 数值...）存在state_dict中
         state_dict = {}
         if opt.cfg is not None and 'SELayer' in opt.cfg:
-            backbone = [f'model.{x}.' for x in range(10)]  # backbone keys
+            backbone = [f'model.{x}.' for x in range(11)]  # backbone keys + SELayer (for more head)
             pt_state_dict = ckpt['model'].float().state_dict()  # to FP32
             for k, v in pt_state_dict.items():  # items() to get k, v
                 if any(x in k for x in backbone):
@@ -544,7 +544,7 @@ def train(hyp, opt, device, tb_writer=None):
                 detect(opt, model=ema.ema)
                 val(
                     detectionPath='./DOTA_demo_view/detection',
-                    rawImagePath=r'./DOTA_demo_view/row_images',
+                    rawImagePath=r'./DOTA_demo_view/row_DOTA_labels',
                     rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt',
                     resultPath=log_dir
                 )
@@ -719,8 +719,8 @@ if __name__ == '__main__':
     opt.world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
     opt.global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1
     set_logging(opt.global_rank)
-    if opt.global_rank in [-1, 0]:
-        check_git_status()
+    # if opt.global_rank in [-1, 0]:
+    #     check_git_status()
 
     # Resume
     '''
