@@ -18,6 +18,7 @@ import copy
 import cv2
 import random
 from PIL import Image
+from tqdm import tqdm
 
 ## the IoU thresh for nms when merge image
 nms_thresh = 0.3
@@ -154,7 +155,8 @@ def mergebase(srcpath, dstpath, nms):
     @param nms: NMS函数
     """
     filelist = GetFileFromThisRootDir(srcpath)  # srcpath文件夹下的所有文件相对路径 eg:['example_split/../P0001.txt', ..., '?.txt']
-    for fullname in filelist:  # 'example_split/../P0001.txt'
+    pbar = tqdm(filelist, total=len(filelist))
+    for fullname in pbar:  # 'example_split/../P0001.txt'
         name = custombasename(fullname)  # 只留下文件名 eg:P0001
         dstname = os.path.join(dstpath, name + '.txt')  # eg: example_merge/..P0001.txt
         if not os.path.exists(dstpath):
@@ -206,6 +208,8 @@ def mergebase(srcpath, dstpath, nms):
                         outline = imgname + ' ' + str(confidence) + ' ' + ' '.join(map(str, bbox)) + ' ' + det[-1]
                         #print('outline:', outline)
                         f_out.write(outline + '\n')
+        s = '%90s' % 'merge'
+        pbar.set_description(s)
 
 def mergebyrec(srcpath, dstpath):
     """

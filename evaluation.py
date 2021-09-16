@@ -86,9 +86,9 @@ def voc_ap(rec, prec, use_07_metric=False):
     return ap
 
 
-def voc_eval(detpath,
-             annopath,
-             imagesetfile,
+def voc_eval(detpath,  # './DOTA_demo_view/detection'
+             annopath,  # './DOTA_demo_view/row_DOTA_labels/{:s}.txt'
+             imagesetfile,  # '/imgnamefile.txt'
              classname,
             # cachedir,
              ovthresh=0.5,
@@ -243,7 +243,7 @@ def voc_eval(detpath,
     # compute precision recall
 
     print('check fp:', fp)
-    print('check tp', tp)
+    print('check tp:', tp)
 
 
     print('npos num:', npos)
@@ -258,14 +258,22 @@ def voc_eval(detpath,
 
     return rec, prec, ap
 
-def evaluation(detoutput, imageset, annopath, classnames):
+
+def evaluation(detoutput, rawImagePath, rawLabelPath):
     """
     评估程序
     @param detoutput: detect.py函数的结果存放输出路径
-    @param imageset: # val DOTA原图数据集图像路径
-    @param annopath: 'r/.../{:s}.txt'  原始val测试集的DOTAlabels路径
-    @param classnames: 测试集中的目标种类
+    @param rawImagePath: # val DOTA原图数据集图像路径
+    @param rawLabelPath: 'r/.../{:s}.txt'  原始val测试集的DOTAlabels路径
     """
+    # For DOTA-v1.5
+    #classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+    #            'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
+    # For DOTA-v1.0
+    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+    #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', ']
+    classnames = ['small-vehicle', 'ship']
+
     result_before_merge_path = str(detoutput + '/result_txt/result_before_merge')
     result_merged_path = str(detoutput + '/result_txt/result_merged')
     result_classname_path = str(detoutput + '/result_txt/result_classname')
@@ -283,56 +291,62 @@ def evaluation(detoutput, imageset, annopath, classnames):
     )
     print('检测结果已按照类别分类')
     image2txt(
-        imageset,  # val原图数据集路径
+        rawImagePath,  # val原图数据集路径
         imageset_name_file_path
               )
     print('校验数据集名称文件已生成')
 
     detpath = str(result_classname_path + '/Task1_{:s}.txt')  # 'r/.../Task1_{:s}.txt'  存放各类别结果文件txt的路径
-    annopath = annopath
+    rawLabelPath = rawLabelPath
     imagesetfile = str(imageset_name_file_path +'/imgnamefile.txt')  # 'r/.../imgnamefile.txt'  测试集图片名称txt
 
     # detpath = r'PATH_TO_BE_CONFIGURED/Task1_{:s}.txt'
     # annopath = r'PATH_TO_BE_CONFIGURED/{:s}.txt' # change the directory to the path of val/labelTxt, if you want to do evaluation on the valset
     # imagesetfile = r'PATH_TO_BE_CONFIGURED/valset.txt'
-
-    # For DOTA-v1.5
-    #classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #            'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
-    # For DOTA-v1.0
-    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', ']
     classaps = []
     map = 0
     skippedClassCount = 0
     for classname in classnames:
-        print('classname:', classname)
-        detfile = detpath.format(classname)
-        if not (os.path.exists(detfile)):
-            skippedClassCount += 1
-            print('This class is not be detected in your dataset: {:s}'.format(classname))
-            continue
-        rec, prec, ap = voc_eval(detpath,
-             annopath,
-             imagesetfile,
-             classname,
-             ovthresh=0.5,
-             use_07_metric=True)
-        map = map + ap
-        #print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
-        print('ap: ', ap)
-        classaps.append(ap)
+        class_rec = []
+        class_prec = []
+        for ovthresh in [0.5, 0.6, 0.7]:
+            print('classname:', classname)
+            detfile = detpath.format(classname)
+            if not (os.path.exists(detfile)):
+                skippedClassCount += 1
+                print('This class is not be detected in your dataset: {:s}'.format(classname))
+                continue
+            rec, prec, ap = voc_eval(detpath,
+                                     rawLabelPath,
+                                     imagesetfile,
+                                     classname,
+                                     ovthresh=ovthresh,
+                                     use_07_metric=True)
+            map = map + ap
+            print('rec:', rec)
+            print('prec:', prec)
+            print('ap:', ap)
+            class_rec.append(rec)
+            class_prec.append(prec)
+            classaps.append(ap)
 
-        # umcomment to show p-r curve of each category
-        # plt.figure(figsize=(8,4))
-        # plt.xlabel('recall')
-        # plt.ylabel('precision')
-        # plt.plot(rec, prec)
-       # plt.show()
+        # plot P-R curve
+        plt.figure(dpi=128, figsize=(10, 6))
+        plt.title("P-R curve class=%s" % classname, fontsize=24)
+        plt.xlabel('recall')
+        plt.ylabel('precision')
+        l1, = plt.plot(class_rec[0], class_prec[0], color='orangered', linestyle='-', marker='o', linewidth=1)
+        l2, = plt.plot(class_rec[1], class_prec[1], color='royalblue', linestyle='-', marker='o', linewidth=1)
+        l3, = plt.plot(class_rec[2], class_prec[2], color='limegreen', linestyle='-', marker='o', linewidth=1)
+        plt.legend(handles=[l1, l2, l3], labels=['thread=0.5', 'thread=0.6', 'thread=0.7'], loc='best')
+        plt.grid()
+        plt.show()
+
     map = map/(len(classnames)-skippedClassCount)
-    print('map:', map)
-    classaps = 100*np.array(classaps)
     print('classaps: ', classaps)
+    print('map:', map)
+    # classaps = 100*np.array(classaps)
+
 
 
 
@@ -347,24 +361,15 @@ if __name__ == '__main__':
         txt中的内容格式:  目标所属原始图片名称 置信度 poly
     4.写一个imgname2txt.py 将测试集的所有图片名称打印到namefile.txt中
     '''
-    # For DOTA-v1.5
-    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-               'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
-    # For DOTA-v1.0
-    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', ']
-
-    #
     evaluation(
-        detoutput='/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection',
-        imageset=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
-        annopath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_DOTA_labels/{:s}.txt',
-        classnames=classnames
+        detoutput='./DOTA_demo_view/detection',
+        rawImagePath=r'./DOTA_demo_view/row_DOTA_labels',
+        rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt'
     )
 
-    draw_DOTA_image(imgsrcpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
-                    imglabelspath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/result_txt/result_merged',
-                    dstpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/merged_drawed',
-                    extractclassname=classnames,
-                    thickness=2
-                    )
+    # draw_DOTA_image(imgsrcpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/row_images',
+    #                 imglabelspath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/result_txt/result_merged',
+    #                 dstpath=r'/home/test/Persons/hukaixuan/yolov5_DOTA_OBB/DOTA_demo_view/detection/merged_drawed',
+    #                 extractclassname=classnames,
+    #                 thickness=2
+    #                 )
