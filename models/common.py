@@ -4,11 +4,13 @@ import math
 import torch
 import torch.nn as nn
 from utils.general import non_max_suppression
+
 '''
 feature map尺寸计算公式： out_size = (in_size + 2*Padding - kernel_size)/strides + 1
 卷积计算时map尺寸向下取整
 池化计算时map尺寸向上取整
 '''
+
 
 def autopad(k, p=None):  # kernel, padding
     '''
@@ -21,6 +23,7 @@ def autopad(k, p=None):  # kernel, padding
     if p is None:  # k是否为int类型，是则返回True
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
 
 def DWConv(c1, c2, k=1, s=1, act=True):
     '''
@@ -37,6 +40,7 @@ def DWConv(c1, c2, k=1, s=1, act=True):
     # Depthwise convolution
     return Conv(c1, c2, k, s, g=math.gcd(c1, c2), act=act)
 
+
 class Conv(nn.Module):
     '''
     标准卷积层Conv
@@ -44,6 +48,7 @@ class Conv(nn.Module):
     (self, in_channels, out_channels, kernel_size, stride, padding, groups, activation_flag)
     p=None时，out_size = in_size/strides
     '''
+
     # Standard convolution
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
         super(Conv, self).__init__()
@@ -57,6 +62,7 @@ class Conv(nn.Module):
     def fuseforward(self, x):  # 前向融合计算（无BN）
         return self.act(self.conv(x))
 
+
 class Bottleneck(nn.Module):
     '''
     标准Bottleneck层
@@ -65,6 +71,7 @@ class Bottleneck(nn.Module):
     (self, in_channels, out_channels, shortcut_flag, group, expansion隐藏神经元的缩放因子)
     out_size = in_size
     '''
+
     # Standard bottleneck
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
         super(Bottleneck, self).__init__()
@@ -82,12 +89,14 @@ class Bottleneck(nn.Module):
         '''
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
+
 class BottleneckCSP(nn.Module):
     '''
     标准ottleneckCSP层
     (self, in_channels, out_channels, Bottleneck层重复次数, shortcut_flag, group, expansion隐藏神经元的缩放因子)
     out_size = in_size
     '''
+
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(BottleneckCSP, self).__init__()
@@ -101,15 +110,17 @@ class BottleneckCSP(nn.Module):
         self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
 
     def forward(self, x):
-        y1 = self.cv3(self.m(self.cv1(x)))   # CONV + BottleNeck + Conv2d  out_channels = c_
+        y1 = self.cv3(self.m(self.cv1(x)))  # CONV + BottleNeck + Conv2d  out_channels = c_
         y2 = self.cv2(x)  # Conv2d   out_channels = c_
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))  # concat(y1 + y2) + BN + LeakyReLU + Conv2d  out_channels = c2
+
 
 class SPP(nn.Module):
     '''
     空间金字塔池化SPP：
     (self, in_channels, out_channels, 池化尺寸strides[3])
     '''
+
     # Spatial pyramid pooling layer used in YOLOv3-SPP
     def __init__(self, c1, c2, k=(5, 9, 13)):
         super(SPP, self).__init__()
@@ -123,11 +134,13 @@ class SPP(nn.Module):
         x = self.cv1(x)
         return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
 
+
 class Focus(nn.Module):
     '''
     Focus : 把宽度w和高度h的信息整合到c空间中
     (self, in_channels, out_channels, kernel_size, stride, padding, group, activation_flag)
     '''
+
     # Focus wh information into c-space
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
         super(Focus, self).__init__()
@@ -140,11 +153,13 @@ class Focus(nn.Module):
         # ::代表[start:end:step], 以2为步长取值
         return self.conv(torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1))
 
+
 class Concat(nn.Module):
     '''
     (dimension)
     默认d=1按列拼接 ， d=0则按行拼接
     '''
+
     # Concatenate a list of tensors along dimension
     def __init__(self, dimension=1):
         super(Concat, self).__init__()
@@ -166,21 +181,25 @@ class NMS(nn.Module):
     def forward(self, x):
         return non_max_suppression(x[0], conf_thres=self.conf, iou_thres=self.iou, classes=self.classes)
 
+
 class Flatten(nn.Module):
     '''
     在全局平均池化以后使用，去掉2个维度
     (batch_size, channels, size, size) -> (batch_size, channels*size*size)
     '''
+
     # Use after nn.AdaptiveAvgPool2d(1) to remove last 2 dimensions
     @staticmethod
     def forward(x):
         return x.view(x.size(0), -1)
+
 
 class Classify(nn.Module):
     '''
     (self, in_channels, out_channels, kernel_size=1, stride=1, padding=None, groups=1)
     (batch_size, channels, size, size) -> (batch_size, channels*1*1)
     '''
+
     # Classification head, i.e. x(b,c1,20,20) to x(b,c2)
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1):  # ch_in, ch_out, kernel, stride, padding, groups
         super(Classify, self).__init__()
@@ -195,6 +214,7 @@ class Classify(nn.Module):
         return self.flat(self.conv(z))  # flatten to x(batch_size, ch_out×1×1)
 
 
+# SELayer
 class SELayer(nn.Module):
     def __init__(self, c1, r=16):
         super(SELayer, self).__init__()
@@ -213,3 +233,64 @@ class SELayer(nn.Module):
         y = self.sig(y)
         y = y.view(b, c, 1, 1)
         return x * y.expand_as(x)
+
+
+# Coordinate Attention
+class CoordAtt(nn.Module):
+    def __init__(self, inp, oup, groups=32):
+        super(CoordAtt, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // groups)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.conv2 = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv3 = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.relu = nn.ReLU6(inplace=True)
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.relu(y)
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        x_h = self.conv2(x_h).sigmoid()
+        x_w = self.conv3(x_w).sigmoid()
+        x_h = x_h.expand(-1, -1, h, w)
+        x_w = x_w.expand(-1, -1, h, w)
+
+        y = identity * x_w * x_h
+
+        return y
+
+
+class Conv_CA(nn.Module):
+    '''
+    标准卷积层Conv + CA注意力机制
+    包括Conv2d + BN + HardWish激活函数
+    (self, in_channels, out_channels, kernel_size, stride, padding, groups, activation_flag)
+    p=None时，out_size = in_size/strides
+    '''
+
+    # Standard convolution
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super(Conv_CA, self).__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.Hardswish() if act else nn.Identity()
+        self.ca = CoordAtt(c2, c2)
+
+    def forward(self, x):  # 前向计算（有BN）
+        return self.ca(self.act(self.bn(self.conv(x))))
+
+    def fuseforward(self, x):  # 前向融合计算（无BN）
+        return self.ca(self.act(self.conv(x)))
