@@ -25,7 +25,8 @@ from utils.datasets import create_dataloader
 from utils.general import (
     torch_distributed_zero_first, labels_to_class_weights, plot_labels, check_anchors, labels_to_image_weights,
     compute_loss, plot_images, fitness, strip_optimizer, plot_results, get_latest_run, check_dataset, check_file,
-    check_git_status, check_img_size, increment_dir, print_mutation, plot_evolution, set_logging, init_seeds)
+    check_git_status, check_img_size, increment_dir, print_mutation, plot_evolution, set_logging, init_seeds,
+    write_target_count)
 from utils.google_utils import attempt_download
 from utils.torch_utils import ModelEMA, select_device, intersect_dicts
 from detect import *
@@ -308,9 +309,10 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Trainloader
     # class dataloader 和 dataset .
+    # 设置copy_paste=True开启复制粘贴大法
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
                                             hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect,
-                                            rank=rank, world_size=opt.world_size, workers=opt.workers)
+                                            rank=rank, world_size=opt.world_size, workers=opt.workers, copy_paste=True)
 
     # 获取标签中最大的类别值，并于类别数作比较, 如果小于类别数则表示有问题
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
@@ -390,6 +392,11 @@ def train(hyp, opt, device, tb_writer=None):
         csv_ap = csv.writer(f_ap)
         csv_ap.writerow(['Epoch', 'mAP', *classnames])
 
+    # 记录每个epoch的target个数
+    with open(log_dir / 'target_count.csv', 'w', encoding='utf-8', newline="") as f_target:
+        csv_target = csv.writer(f_target)
+        csv_target.writerow(['Epoch', 'target'])
+
     # 训练
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         # model设置为训练模式，其中training属性表示BatchNorm与Dropout层在训练阶段和测试阶段中采取的策略不同，通过判断training值来决定前向传播策略
@@ -433,6 +440,10 @@ def train(hyp, opt, device, tb_writer=None):
             # tqdm 创建进度条，方便训练时 信息的展示
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
+
+        # 当前epoch的target数
+        targets_count = 0
+
         for i, (imgs, targets, paths, _) in pbar:  # batch ------------------------------------------------------------
             '''
             i: batch_index, 第i个batch
@@ -515,6 +526,9 @@ def train(hyp, opt, device, tb_writer=None):
                 # 进度条显示以上信息
                 pbar.set_description(s)
 
+                # 累加target数
+                targets_count += targets.shape[0]
+
                 # Plot
                 # 将前三次迭代batch的标签框在图片上画出来并保存
                 if ni < 3:
@@ -574,6 +588,9 @@ def train(hyp, opt, device, tb_writer=None):
                         'x/lr0', 'x/lr1', 'x/lr2']  # params
                 for x, tag in zip(list(mloss[:-1]) + list(results) + lr, tags):
                     tb_writer.add_scalar(tag, x, epoch)
+
+            # 记录当前epoch的target数目并作图
+            write_target_count(targets_count, log_dir)
 
             # Update best mAP
             # 更新best_fitness

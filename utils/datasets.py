@@ -4,6 +4,7 @@ import os
 import random
 import shutil
 import time
+from os.path import join
 from pathlib import Path
 from threading import Thread
 
@@ -47,7 +48,7 @@ def exif_size(img):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=False, cache=False, pad=0.0, rect=False,
-                      rank=-1, world_size=1, workers=8):
+                      rank=-1, world_size=1, workers=8, copy_paste=False):
     '''
     确保只有DDP中的第一个进程首先处理数据集，然后其他进程可以使用缓存。
     Make sure only the first process in DDP process the dataset first, and the following others can use the cache.
@@ -75,7 +76,8 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
                                       single_cls=opt.single_cls,
                                       stride=int(stride),
                                       pad=pad,
-                                      rank=rank)
+                                      rank=rank,
+                                      copy_paste=copy_paste)
 
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -433,7 +435,7 @@ class LoadImagesAndLabels(Dataset):
             self.labels     [array( [对应1.txt的labels信息] ，dtype=float32), ..., array( [对应n.txt的labels信息] ，dtype=float32)]
     """
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, rank=-1):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, rank=-1, copy_paste=False):
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -462,6 +464,7 @@ class LoadImagesAndLabels(Dataset):
         self.n = n  # number of images
         self.batch = bi  # batch index of image
         self.img_size = img_size
+        self.copy_paste = copy_paste
         self.augment = augment
         self.hyp = hyp
         self.image_weights = image_weights
@@ -669,6 +672,7 @@ class LoadImagesAndLabels(Dataset):
             # img4 : size = (3 , size1, size2);
             # labels : size = (单张img4中的目标GT数量, [classid ,LT_x,LT_y,RB_x,RB_y,Θ]);
             img, labels = load_mosaic(self, index)
+            # cv2.imwrite("test1.png", img)
             shapes = None
 
             # MixUp https://arxiv.org/pdf/1710.09412.pdf 对mosaic处理后的图片再一次进行随机mixup处理
@@ -730,6 +734,12 @@ class LoadImagesAndLabels(Dataset):
             # 重新归一化标签0 - 1
             labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
+
+        # 如果mosaic之后的图像目标数量小于50,就做copy-paste数据增强
+        if self.copy_paste and nL < 50:
+            nL_count = 50 - nL
+            img, labels = load_copypaste(img, labels, nL_count)
+            # cv2.imwrite("test2.png", img)
 
         # labels.size = (目标数量, [class, xywh, Θ])
         if self.augment:
@@ -1197,3 +1207,293 @@ def create_folder(path='./new'):
     if os.path.exists(path):
         shutil.rmtree(path)  # delete output folder
     os.makedirs(path)  # make new output folder
+
+
+def load_copypaste(img, labels, nL):
+    """
+    将mosaic后的图片载入copy-paste数据增强
+    """
+    crops_dir = "DOTA_demo_view/crops"
+    count = nL  # 更改每次在mosaic图上添加多少个小目标
+
+    small_dir = join(crops_dir, 'small.txt')
+    small = [f.strip() for f in open(small_dir).readlines()]
+    random.shuffle(small)  # 打乱顺序
+
+    small_img = []  # 要添加的小目标列表
+    for x in range(count):  # 从小目标中随机取count个目标加入图片
+        # 每次从small里取一个并出栈，一轮取完之后如果还不够count，就重新再读一次文件
+        if small == []:
+            small = [f.strip() for f in open(small_dir).readlines()]
+            random.shuffle(small)
+        small_img.append(small.pop())
+    img, labels = copysmallobjects(img, labels, small_img)
+
+    return img, labels
+
+
+def copysmallobjects(image, labels, small_img_dir):
+    bg_height, bg_width, _ = image.shape
+
+    # 反归一化 + 转化为对角坐标, angle(cv)
+    rescale_labels = rescale_yolo_labels(labels, image.shape)
+
+    all_boxes = []  # 所有目标的box（包括新加入的小目标）
+    for rescale_label in rescale_labels:
+        all_boxes.append(rescale_label)
+
+    for item in small_img_dir:
+        small_obj_dir, small_obj_cls = item.split(' ')
+        small_obj_img = cv2.imread(small_obj_dir)
+
+        # 根据背景图调整小目标的大小
+        small_obj_h, small_obj_w, _ = small_obj_img.shape
+        # 调整小目标的大小
+        roi = cv2.resize(small_obj_img, (int(small_obj_w), int(small_obj_h)), interpolation=cv2.INTER_AREA)
+
+        # 得到小目标贴到图像上的位置, 并保证bbox不会挡住图片上原有的目标
+        new_bboxes = random_add_patches(roi.shape, all_boxes, image.shape,
+                                        paste_number=1, iou_thresh=0, cl_id=small_obj_cls)
+        # new bboxes = [[cls, x1, y1, x2, y2], [cls, x1, y1, x2, y2], ...]
+
+        # print('{} new_bbox'.format(image_dir), new_bboxes)
+
+        # 开始绘制
+        for new_bbox in new_bboxes:
+
+            cl, x1, y1, x2, y2 = new_bbox[0], new_bbox[1], new_bbox[2], new_bbox[3], new_bbox[4]
+            x_c, y_c = int((x2 + x1) / 2), int((y2 + y1) / 2)  # obj中心点坐标
+
+            try:
+                # 随机旋转角度
+                angle = -random.randint(0, 90)
+                rotate_roi = rotate_bound(roi, angle)  # 旋转后的roi
+                # visual(rotate_roi)
+
+                # 旋转之后，图像大小发生变化，背景作图区域就需要跟着变化，但是标签不变
+                # roi = GaussianBlurImg(roi)  # 高斯模糊
+                center = x_c, y_c
+                # mask = 255 * np.ones(rotate_roi.shape, rotate_roi.dtype)  # 创建一个全白mask
+                # mask = np.zeros(rotate_roi.shape, rotate_roi.dtype)  # 创建一个全白mask
+                mask = (np.ceil(rotate_roi / 255.0) * 255.0).astype('uint8')  # 提取出小目标的区域作为mask
+
+                image = cv2.seamlessClone(rotate_roi, image, mask, center, cv2.NORMAL_CLONE)
+                new_bbox.append(angle)
+                all_boxes.append(new_bbox)
+                # visual(image)
+
+                # print("end try")
+            except ValueError:
+                print(ValueError)
+                continue
+
+    # 把所有box转换成longsideformat
+    result_labels = []
+    for label in all_boxes:
+        cls, x1, y1, x2, y2, angle = label
+        box = (float(cls), float(x1), float(y1), float(x2), float(y2), float(angle))
+        n_box = doublePoly2longsideformat(image.shape, box)
+        result_labels.append(n_box)
+
+    return image, result_labels
+
+
+def rescale_yolo_labels(labels, img_shape):
+    """
+    反归一化 + 转换对角坐标
+    @param labels: 标签 cls, x, y, long, short, angle
+    @param img_shape:
+    @return: [[cls, int(x_left), int(y_left), int(x_right), int(y_right), angle(cv)], ...]
+    """
+    height, width, _ = img_shape
+    rescale_boxes = []
+    for box in list(labels):
+        cls = box[0]
+        rect = \
+            longsideformat2cvminAreaRect(float(box[1]), float(box[2]), float(box[3]), float(box[4]), float(box[5])-179.9)
+        (x_c, y_c), (w, h), theta = rect
+
+        # print(rect)
+        # drawOneRectAndShow(img, rect)
+
+        # # 反归一化
+        # x_c = x_c * width
+        # y_c = y_c * height
+        # w = w * width
+        # h = h * height
+        # angle = theta
+        # 对角坐标
+        x1 = x_c - w * .5
+        y1 = y_c - h * .5
+        x2 = x_c + w * .5
+        y2 = y_c + h * .5
+        # 反归一化
+        x1 *= width
+        y1 *= height
+        x2 *= width
+        y2 *= height
+        angle = theta
+
+        # poly = numpy.int0([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+        # rescale_boxes.append([cls, int(x_left), int(y_left), int(x_right), int(y_right), angle])
+        rescale_boxes.append([cls, x1, y1, x2, y2, angle])
+    return rescale_boxes
+
+
+def random_add_patches(obj_shape, all_boxes, bg_shape, paste_number, iou_thresh, cl_id):
+    """
+    计算小目标贴到图像上的位置, 并保证bbox不会挡住图片上原有的目标
+    @param obj_shape: 小目标shape
+    @param all_boxes: 被增强图片上已有目标的对角坐标（包括刚添加的）
+    @param bg_shape: 被增强图片shape
+    @param paste_number: 将该小目标贴到到原图上的次数, 所以最后添加的总目标数是count * paste_number
+    @param iou_thresh: 原图上的bbox和贴上去的roi的bbox的阈值？
+    @param cl_id: 小目标的类别下标
+    @return: roi在原图上的bbox [cls, x, y, x, y]
+    """
+    # temp = []
+    # for rescale_bbox in rescale_boxes:
+    #     temp.append(rescale_bbox)  # 添加被增强图片上已有目标的对角坐标
+    obj_h, obj_w, _ = obj_shape
+    bg_h, bg_w, _ = bg_shape
+    # 防止目标粘贴到图像边缘，缩小小目标可粘贴范围
+    center_search_space = sampling_new_bbox_center_point(bg_shape)
+    success_num = 0
+    new_bboxes = []
+
+    attempts = 0
+    while success_num < paste_number:
+        attempts += 1
+        if attempts == 100:
+            print("未找到合适位置！")
+            break
+        # print(success_num)
+        new_bbox_x_center, new_bbox_y_center = norm_sampling(center_search_space)  # 随机生成目标中心点
+        # 如果小目标贴到该位置有一半出界，就放弃这个位置
+        if new_bbox_x_center - 0.5 * obj_w < 0 or new_bbox_x_center + 0.5 * obj_w > bg_w:
+            continue
+        if new_bbox_y_center - 0.5 * obj_h < 0 or new_bbox_y_center + 0.5 * obj_h > bg_h:
+            continue
+
+        # 小目标对角坐标
+        x1, y1, x2, y2 = \
+            new_bbox_x_center - 0.5 * obj_w, new_bbox_y_center - 0.5 * obj_h, \
+            new_bbox_x_center + 0.5 * obj_w, new_bbox_y_center + 0.5 * obj_h
+        new_bbox = [cl_id, int(x1), int(y1), int(x2), int(y2)]
+
+        ious = [bbox_iou(new_bbox, bbox_t) for bbox_t in all_boxes]
+        ious2 = [bbox_iou(new_bbox, bbox_t1) for bbox_t1 in new_bboxes]
+
+        if ious2 == []:
+            ious2.append(0)
+
+        if max(ious) <= iou_thresh and max(ious2) <= iou_thresh:
+            success_num += 1
+            # temp.append(new_bbox)
+            new_bboxes.append(new_bbox)
+        else:
+            continue
+
+    return new_bboxes
+
+
+def rotate_bound(image, angle):
+    """
+    根据angle旋转图像
+    """
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+
+    # compute the new bounding dimensions of the image
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH))
+
+
+def sampling_new_bbox_center_point(img_shape):
+    height, width, nc = img_shape
+    # 修改区域
+    search_x_left, search_y_left, search_x_right, search_y_right = \
+        width * 0.1, height * 0.1, width * 0.9, height * 0.9
+    return [search_x_left, search_y_left, search_x_right, search_y_right]
+
+
+def bbox_iou(box1, box2):
+    cl, b1_x1, b1_y1, b1_x2, b1_y2 = box1
+    if len(box2) == 6:
+        cl, b2_x1, b2_y1, b2_x2, b2_y2, _ = box2
+    else:
+        cl, b2_x1, b2_y1, b2_x2, b2_y2 = box2
+    # get the corrdinates of the intersection rectangle
+    inter_rect_x1 = max(b1_x1, b2_x1)
+    inter_rect_y1 = max(b1_y1, b2_y1)
+    inter_rect_x2 = min(b1_x2, b2_x2)
+    inter_rect_y2 = min(b1_y2, b2_y2)
+    # Intersection area
+    inter_width = inter_rect_x2 - inter_rect_x1 + 1
+    inter_height = inter_rect_y2 - inter_rect_y1 + 1
+    if inter_width > 0 and inter_height > 0:  # strong condition
+        inter_area = inter_width * inter_height
+        # Union Area
+        b1_area = (b1_x2 - b1_x1 + 1) * (b1_y2 - b1_y1 + 1)
+        b2_area = (b2_x2 - b2_x1 + 1) * (b2_y2 - b2_y1 + 1)
+        iou = inter_area / (b1_area + b2_area - inter_area)
+    else:
+        iou = 0
+    return iou
+
+
+def norm_sampling(search_space):
+    # 随机生成目标中心点
+    search_x_left, search_y_left, search_x_right, search_y_right = search_space
+
+    search_x_left = int(search_x_left)
+    search_x_right = int(search_x_right)
+    search_y_left = int(search_y_left)
+    search_y_right = int(search_y_right)
+
+    new_bbox_x_center = random.randint(search_x_left, search_x_right)
+    # print(search_y_left, search_y_right, '=')
+    new_bbox_y_center = random.randint(search_y_left, search_y_right)
+    return [new_bbox_x_center, new_bbox_y_center]
+
+
+def doublePoly2longsideformat(img_shape, box):
+    height, width, _ = img_shape
+    cls, x1, y1, x2, y2, angle = box
+
+    h = y2 - y1
+    w = x2 - x1
+    x_c = x1 + w * .5
+    y_c = y1 + h * .5
+
+    rect = ((x_c, y_c), (w, h), angle)
+    # drawOneRectAndShow(img, rect)
+
+    # 归一化
+    x_c /= width
+    y_c /= height
+    h /= height
+    w /= width
+
+    x_c, y_c, longside, shortside, angle = cvminAreaRect2longsideformat(x_c, y_c, w, h, angle)
+    theta_label = int(angle + 180.5)  # range int[0,180] 四舍五入
+    if theta_label == 180:  # range int[0,179]
+        theta_label = 179
+    return cls, x_c, y_c, longside, shortside, theta_label
+

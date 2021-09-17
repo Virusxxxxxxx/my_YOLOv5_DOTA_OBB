@@ -2218,11 +2218,15 @@ def plotChart(filename, saveDir):
             y.append(float(row[1]))
 
     fig = plt.figure(dpi=128, figsize=(10, 6))
-    ln1 = plt.plot(x, y, "r")
+    color = random.choice(['limegreen', 'royalblue', 'orangered'])
+    ln1, = plt.plot(x, y, color=color, linestyle='-', marker='o', linewidth=1)
     plt.title(filename, fontsize=24)
     if filename in ["classAP"]:
         plt.xlabel("epoch")
         plt.ylabel("mAP")
+    elif filename == "target_count":
+        plt.xlabel("epoch")
+        plt.ylabel("target")
     plt.grid()
     plt.savefig(saveDir + '/' + filename + ".png")
 
@@ -2250,3 +2254,12 @@ def plotChart_interest(filename, saveDir):
         plt.ylabel("AP")
     plt.grid()
     plt.savefig(saveDir + '/' + filename + ".png")
+    
+
+def write_target_count(target_count, saveDir):
+    filename = saveDir / 'target_count.csv'
+    with open(filename, 'a', encoding='utf-8', newline="") as f_ap:
+        csv_ap = csv.writer(f_ap)
+        csv_ap.writerow(target_count)
+
+    plotChart("target_count", saveDir)

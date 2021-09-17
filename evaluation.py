@@ -340,14 +340,12 @@ def evaluation(detoutput, rawImagePath, rawLabelPath):
         l3, = plt.plot(class_rec[2], class_prec[2], color='limegreen', linestyle='-', marker='o', linewidth=1)
         plt.legend(handles=[l1, l2, l3], labels=['thread=0.5', 'thread=0.6', 'thread=0.7'], loc='best')
         plt.grid()
-        plt.show()
+        plt.savefig(detoutput + '/' + "PR_%s.png" % classname)
 
     map = map/(len(classnames)-skippedClassCount)
     print('classaps: ', classaps)
     print('map:', map)
     # classaps = 100*np.array(classaps)
-
-
 
 
 if __name__ == '__main__':
