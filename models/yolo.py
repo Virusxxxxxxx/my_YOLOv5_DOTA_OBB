@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 import torch
 import torch.nn as nn
 
-from models.common import Conv, Bottleneck, SPP, DWConv, Focus, BottleneckCSP, Concat, NMS, SELayer, Conv_CA
+from models.common import Conv, Bottleneck, SPP, DWConv, Focus, BottleneckCSP, Concat, NMS, SELayer, Conv_CA, \
+    Concat_BiFPN
 from models.experimental import MixConv2d, CrossConv, C3
 from utils.general import check_anchor_order, make_divisible, check_file, set_logging
 from utils.torch_utils import (
@@ -379,6 +380,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is Concat:
             # 以第一个concat为例 ： ch[-1] + ch[x+1] = ch[-1]+ch[7] = 640 + 640 = 1280
             c2 = sum([ch[-1 if x == -1 else x + 1] for x in f])
+        elif m is Concat_BiFPN:
+            c2 = max([ch[x] for x in f])
         elif m is Detect:
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
