@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 
 from models.common import Conv, Bottleneck, SPP, DWConv, Focus, BottleneckCSP, Concat, NMS, SELayer, Conv_CA, \
-    Concat_BiFPN
+    Concat_BiFPN, CBAM
 from models.experimental import MixConv2d, CrossConv, C3
 from utils.general import check_anchor_order, make_divisible, check_file, set_logging
 from utils.torch_utils import (
@@ -346,7 +346,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain,BottleneckCSP层中Bottleneck层的个数
 
         # 排除concat，Unsample，Detect的情况
-        if m in [Conv, Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3, Conv_CA]:
+        if m in [Conv, Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3, Conv_CA, CBAM]:
             # ch每次循环都会扩增[3]-> [3,80] -> [3,80,160] -> [3,80,160,160] -> '''
             c1, c2 = ch[f], args[0]  # c1 = 3， c2 = 每次module函数中的out_channels参数
 
@@ -379,11 +379,13 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             # 以第一个concat为例 ： ch[-1] + ch[x+1] = ch[-1]+ch[7] = 640 + 640 = 1280
-            c2 = sum([ch[-1 if x == -1 else x + 1] for x in f])
+            # c2 = sum([ch[-1 if x == -1 else x + 1] for x in f])
+            c2 = sum([ch[x] for x in f])
         elif m is Concat_BiFPN:
             c2 = max([ch[x] for x in f])
+            args = [c2, c2]
         elif m is Detect:
-            args.append([ch[x + 1] for x in f])
+            args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
         elif m is SELayer:  # add SELayer
@@ -417,6 +419,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         # 将每层结构的函数名拓展进layers list
         layers.append(m_)
+        if i == 0:  # 删除第一个输入通道数3
+            ch = []
         # 将每层结构的out_channels拓展进ch，以便下一层结构调用上一层的输出通道数 yolov5.yaml中的第0层的输出对应ch[1] ;i - ch[i+1]
         ch.append(c2)
     '''

@@ -739,6 +739,7 @@ class LoadImagesAndLabels(Dataset):
         if self.copy_paste and nL < 50:
             nL_count = 50 - nL
             img, labels = load_copypaste(img, labels, nL_count)
+            nL = 50
             # cv2.imwrite("test2.png", img)
 
         # labels.size = (目标数量, [class, xywh, Θ])
@@ -1229,7 +1230,7 @@ def load_copypaste(img, labels, nL):
         small_img.append(small.pop())
     img, labels = copysmallobjects(img, labels, small_img)
 
-    return img, labels
+    return img, np.array(labels)
 
 
 def copysmallobjects(image, labels, small_img_dir):
@@ -1386,6 +1387,9 @@ def random_add_patches(obj_shape, all_boxes, bg_shape, paste_number, iou_thresh,
 
         if ious2 == []:
             ious2.append(0)
+
+        if ious == []:
+            ious.append(0)
 
         if max(ious) <= iou_thresh and max(ious2) <= iou_thresh:
             success_num += 1

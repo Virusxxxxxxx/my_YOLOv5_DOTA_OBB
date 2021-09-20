@@ -94,7 +94,7 @@ class Bottleneck(nn.Module):
 
 class BottleneckCSP(nn.Module):
     '''
-    标准ottleneckCSP层
+    标准bottleneckCSP层
     (self, in_channels, out_channels, Bottleneck层重复次数, shortcut_flag, group, expansion隐藏神经元的缩放因子)
     out_size = in_size
     '''
