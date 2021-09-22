@@ -1,5 +1,6 @@
 # 4 SELayer
 # parameters
+# Model Summary: 271 layers, 2.26089e+07 parameters, 2.26089e+07 gradients, 53.8 GFLOPS
 nc: 2  # number of classes
 depth_multiple: 0.67  # model depth multiple
 width_multiple: 0.75  # layer channel multiple

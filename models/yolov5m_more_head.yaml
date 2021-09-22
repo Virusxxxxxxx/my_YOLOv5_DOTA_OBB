@@ -1,5 +1,6 @@
 # CA + 4 detector head
 # parameters
+# Model Summary: 323 layers, 2.43158e+07 parameters, 2.43158e+07 gradients
 nc: 2  # number of classes
 depth_multiple: 0.67  # model depth multiple
 width_multiple: 0.75  # layer channel multiple

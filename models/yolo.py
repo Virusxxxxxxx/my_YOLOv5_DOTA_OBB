@@ -12,8 +12,8 @@ import torch
 import torch.nn as nn
 
 from models.common import Conv, Bottleneck, SPP, DWConv, Focus, BottleneckCSP, Concat, NMS, SELayer, Conv_CA, \
-    Concat_BiFPN, CBAM
-from models.experimental import MixConv2d, CrossConv, C3
+    Concat_BiFPN, CBAM, C3, C3Ghost
+from models.experimental import MixConv2d, CrossConv
 from utils.general import check_anchor_order, make_divisible, check_file, set_logging
 from utils.torch_utils import (
     time_synchronized, fuse_conv_and_bn, model_info, scale_img, initialize_weights, select_device)
@@ -346,7 +346,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain,BottleneckCSP层中Bottleneck层的个数
 
         # 排除concat，Unsample，Detect的情况
-        if m in [Conv, Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3, Conv_CA, CBAM]:
+        if m in [Conv, Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3, C3Ghost, Conv_CA, CBAM]:
             # ch每次循环都会扩增[3]-> [3,80] -> [3,80,160] -> [3,80,160,160] -> '''
             c1, c2 = ch[f], args[0]  # c1 = 3， c2 = 每次module函数中的out_channels参数
 
@@ -371,7 +371,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             # if m != Focus:
             #     c2 = make_divisible(c2, 8) if c2 != no else c2
             args = [c1, c2, *args[1:]]  # [ch[-1], out_channels, kernel_size, strides(可能)] — 除了BottleneckCSP与C3层
-            if m in [BottleneckCSP, C3]:
+            if m in [BottleneckCSP, C3, C3Ghost]:
                 args.insert(2, n)       # [ch[-1], out_channnels, Bottleneck_num] — BottleneckCSP与C3层
                 n = 1
 
