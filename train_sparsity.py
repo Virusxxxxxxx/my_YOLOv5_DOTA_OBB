@@ -14,12 +14,14 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
+from torch import nn
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 # import test  # import test.py to get mAP after each epoch
+from models.common import Bottleneck
 from models.yolo import Model
 from utils.datasets import create_dataloader
 from utils.general import (
@@ -312,7 +314,7 @@ def train(hyp, opt, device, tb_writer=None):
     # 设置copy_paste=True开启复制粘贴大法
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
                                             hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect,
-                                            rank=rank, world_size=opt.world_size, workers=opt.workers, copy_paste=False)
+                                            rank=rank, world_size=opt.world_size, workers=opt.workers, copy_paste=True)
 
     # 获取标签中最大的类别值，并于类别数作比较, 如果小于类别数则表示有问题
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
@@ -378,7 +380,7 @@ def train(hyp, opt, device, tb_writer=None):
     """
     scheduler.last_epoch = start_epoch - 1  # do not move
     # 通过torch1.6自带的api设置混合精度训练
-    scaler = amp.GradScaler(enabled=cuda)
+    # scaler = amp.GradScaler(enabled=cuda)
     """
     打印训练和测试输入图片分辨率
     加载图片时调用的cpu进程数
@@ -504,13 +506,30 @@ def train(hyp, opt, device, tb_writer=None):
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
 
             # Backward
-            scaler.scale(loss).backward()
+            # scaler.scale(loss).backward()
+            loss.backward()
+            # # ============================= sparsity training ========================== #
+            srtmp = opt.sr*(1 - 0.9*epoch/epochs)
+            if opt.st:
+                ignore_bn_list = []
+                for k, m in model.named_modules():
+                    if isinstance(m, Bottleneck):
+                        if m.add:
+                            ignore_bn_list.append(k.rsplit(".", 2)[0] + ".cv1.bn")
+                            ignore_bn_list.append(k + '.cv1.bn')
+                            ignore_bn_list.append(k + '.cv2.bn')
+                    if isinstance(m, nn.BatchNorm2d) and (k not in ignore_bn_list):
+                        m.weight.grad.data.add_(srtmp * torch.sign(m.weight.data))  # L1
+                        m.bias.grad.data.add_(opt.sr*10 * torch.sign(m.bias.data))  # L1
+            # # ============================= sparsity training ========================== #
+
 
             # Optimize
             # 模型反向传播accumulate次之后再根据累积的梯度更新一次参数
             if ni % accumulate == 0:
-                scaler.step(optimizer)  # optimizer.step
-                scaler.update()
+                # scaler.step(optimizer)
+                # scaler.update()
+                optimizer.step()
                 optimizer.zero_grad()
                 if ema:
                     ema.update(model)
@@ -559,10 +578,11 @@ def train(hyp, opt, device, tb_writer=None):
                 detect(opt, model=ema.ema)
                 val(
                     detectionPath='./DOTA_demo_view/detection',
-                    rawImagePath=r'./DOTA_demo_view/row_DOTA_labels',
-                    # rawImagePath=r'../datasets/dota_interest_small/row_DOTA_labels',  # for test
-                    rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt',
-                    # rawLabelPath=r'../datasets/dota_interest_small/row_DOTA_labels/{:s}.txt',  # for test
+                    # rawImagePath=r'./DOTA_demo_view/row_DOTA_labels',
+                    # rawLabelPath=r'./DOTA_demo_view/row_DOTA_labels/{:s}.txt',
+                    # for test
+                    rawImagePath=r'../datasets/dota_interest_small/row_DOTA_labels',
+                    rawLabelPath=r'../datasets/dota_interest_small/row_DOTA_labels/{:s}.txt',
                     resultPath=log_dir
                 )
             #     results, maps, times = test.test(opt.data,
@@ -687,6 +707,8 @@ if __name__ == '__main__':
         workers:dataloader的最大worker数量
     """
     parser = argparse.ArgumentParser()
+    parser.add_argument('--st', action='store_true',default=True, help='train with L1 sparsity normalization')
+    parser.add_argument('--sr', type=float, default=0.001, help='L1 normal sparse rate')
     parser.add_argument('--weights', type=str, default='weights/yolov5m_30.pt', help='initil weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/DOTA_ROTATED.yaml', help='data.yaml path')
@@ -711,13 +733,16 @@ if __name__ == '__main__':
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
     parser.add_argument('--logdir', type=str, default='runs/', help='logging directory')
-    parser.add_argument('--workers', type=int, default=2, help='maximum number of dataloader workers')
+    parser.add_argument('--workers', type=int, default=8, help='maximum number of dataloader workers')
     parser.add_argument('--freeze', type=int, default=0, help='Number of layers to freeze. backbone=10, all=24')
 
     # for detection
+    # parser.add_argument('--detect_output', type=str, default='DOTA_demo_view/detection', help='output folder')
+    # parser.add_argument('--detect_source', type=str, default='DOTA_demo_view/images/val', help='source')
+    # small
     parser.add_argument('--detect_output', type=str, default='DOTA_demo_view/detection', help='output folder')
-    parser.add_argument('--detect_source', type=str, default='DOTA_demo_view/images/val', help='source')
-    # parser.add_argument('--detect_source', type=str, default='../datasets/dota_interest_small/images/val', help='for test')
+    parser.add_argument('--detect_source', type=str, default='../datasets/dota_interest_small/images/val', help='source')
+
     parser.add_argument('--view-img', action='store_true', help='display results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
     parser.add_argument('--augment', action='store_true', help='augmented inference')

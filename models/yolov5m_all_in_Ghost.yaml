@@ -1,4 +1,4 @@
-# BiFPN + 4 detector + CBAM + kmeans++ anchor + BiFPN
+# BiFPN + 4 detector + CBAM + kmeans++ anchor + BiFPN + GhostC3
 # parameters
 # Model Summary: 557 layers, 1.49089e+07 parameters, 1.49089e+07 gradients, 37.8 GFLOPS
 nc: 2  # number of classes

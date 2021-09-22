@@ -293,7 +293,7 @@ def scale_labels(img1_shape, labels, img0_shape, ratio_pad=None):
         h = rect_scale[1][1]
         theta = rect_scale[-1]  # Range for angle is [-90，0)
 
-        label = np.array(cvminAreaRect2longsideformat(c_x, c_y, w, h, theta))
+        label = np.array(cvminAreaRect2longsideformat(c_x, c_y, w, h, theta, log=False))
         if label.size == 1:  # 如果minAreaRect出现bug，那么cvminAreaRect2longsideformat就会返回False
             scaled_labels.append([0, 0, 0, 0, 0])  # 直接传全0，在rbox2txt里筛
             continue
@@ -1733,7 +1733,7 @@ def longsideformat2poly(x_c, y_c, longside, shortside, theta_longside):
     return poly
 
 
-def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
+def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta, log=True):
     '''
     trans minAreaRect(x_c, y_c, width, height, θ) to longside format(x_c, y_c, longside, shortside, θ)
     两者区别为:
@@ -1763,6 +1763,8 @@ def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
         height = buffer_width
 
     if theta > 0:
+        if not log:
+            return False
         if theta != 90:  # Θ=90说明wh中有为0的元素，即gt信息不完整，无需提示异常，直接删除
             print('θ计算出现异常，当前数据为：%.16f, %.16f, %.16f, %.16f, %.1f;超出opencv表示法的范围：[-90,0)' % (
             x_c, y_c, width, height, theta))
@@ -1785,7 +1787,7 @@ def cvminAreaRect2longsideformat(x_c, y_c, width, height, theta):
         print('旋转框转换表示形式后出现问题：最长边小于短边;[%.16f, %.16f, %.16f, %.16f, %.1f]' % (
         x_c, y_c, longside, shortside, theta_longside))
         return False
-    if (theta_longside < -180 or theta_longside >= 0):
+    if theta_longside < -180 or theta_longside >= 0:
         print('旋转框转换表示形式时出现问题:θ超出长边表示法的范围：[-180,0);[%.16f, %.16f, %.16f, %.16f, %.1f]' % (
         x_c, y_c, longside, shortside, theta_longside))
         return False
@@ -2258,8 +2260,9 @@ def plotChart_interest(filename, saveDir):
 
 def write_target_count(target_count, saveDir):
     filename = saveDir / 'target_count.csv'
+    epoch = len(open(filename, 'r').readlines())
     with open(filename, 'a', encoding='utf-8', newline="") as f_ap:
         csv_ap = csv.writer(f_ap)
-        csv_ap.writerow(target_count)
+        csv_ap.writerow([epoch, target_count])
 
-    plotChart("target_count", saveDir)
+    plotChart("target_count", str(saveDir))

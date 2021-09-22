@@ -1,4 +1,4 @@
-# BiFPN + 4 detector + CBAM + kmeans++ anchor + BiFPN
+# BiFPN + 4 detector + CBAM + kmeans++ anchor + BiFPN + C3
 # parameters
 # CSPBottleneck Model Summary: 399 layers, 2.53368e+07 parameters, 2.53368e+07 gradients, 69.9 GFLOPS
 # C3 Model Summary: 389 layers, 2.48955e+07 parameters, 2.48955e+07 gradients, 68.7 GFLOPS
