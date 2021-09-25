@@ -28,7 +28,7 @@ from utils.general import (
     check_git_status, check_img_size, increment_dir, print_mutation, plot_evolution, set_logging, init_seeds,
     write_target_count)
 from utils.google_utils import attempt_download
-from utils.torch_utils import ModelEMA, select_device, intersect_dicts
+from utils.torch_utils import ModelEMA, select_device, intersect_dicts, EarlyStopping
 from detect import *
 from val import *
 
@@ -379,6 +379,7 @@ def train(hyp, opt, device, tb_writer=None):
     scheduler.last_epoch = start_epoch - 1  # do not move
     # 通过torch1.6自带的api设置混合精度训练
     scaler = amp.GradScaler(enabled=cuda)
+    stopper = EarlyStopping(patience=opt.patience)
     """
     打印训练和测试输入图片分辨率
     加载图片时调用的cpu进程数
@@ -551,7 +552,7 @@ def train(hyp, opt, device, tb_writer=None):
                 # 更新EMA的属性
                 # 添加include的属性
                 ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'gr', 'names', 'stride'])
-            final_epoch = epoch + 1 == epochs
+            final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             # # 判断该epoch是否为最后一轮
             if not opt.notest or final_epoch:  # Calculate mAP
                 # 对测试集进行测试，计算mAP等指标
@@ -624,6 +625,9 @@ def train(hyp, opt, device, tb_writer=None):
                         os.system('cp --parents %s %s' % (item, opt.auto_upload))
                     print("   Auto-upload completed!")
                 del ckpt
+
+            if rank == -1 and stopper(epoch=epoch, fitness=fi):
+                break
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training
 
