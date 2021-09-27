@@ -2227,7 +2227,7 @@ def plotChart(filename, saveDir):
         plt.xlabel("epoch")
         plt.ylabel("mAP")
     elif filename == "target_count":
-        plt.xlabel("epoch")
+        plt.xlabel("iterator")
         plt.ylabel("target")
     plt.grid()
     plt.savefig(saveDir + '/' + filename + ".png")
@@ -2258,11 +2258,12 @@ def plotChart_interest(filename, saveDir):
     plt.savefig(saveDir + '/' + filename + ".png")
     
 
-def write_target_count(target_count, saveDir):
+def write_target_count(target_counts, saveDir):
     filename = saveDir / 'target_count.csv'
     epoch = len(open(filename, 'r').readlines())
     with open(filename, 'a', encoding='utf-8', newline="") as f_ap:
         csv_ap = csv.writer(f_ap)
-        csv_ap.writerow([epoch, target_count])
+        for target_count in target_counts:
+            csv_ap.writerow(target_count)
 
     plotChart("target_count", str(saveDir))

@@ -735,11 +735,12 @@ class LoadImagesAndLabels(Dataset):
             labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
 
-        # 如果mosaic之后的图像目标数量小于50,就做copy-paste数据增强
-        if self.copy_paste and nL < 50:
-            nL_count = 50 - nL
+        # 如果mosaic之后的图像目标数量小于min_target_count,就做copy-paste数据增强
+        min_target_count = 80
+        if self.copy_paste and nL < min_target_count:
+            nL_count = min_target_count - nL
             img, labels = load_copypaste(img, labels, nL_count)
-            nL = 50
+            nL = labels.shape[0]
             # cv2.imwrite("test2.png", img)
 
         # labels.size = (目标数量, [class, xywh, Θ])
@@ -1287,6 +1288,9 @@ def copysmallobjects(image, labels, small_img_dir):
             except ValueError:
                 print(ValueError)
                 continue
+            except cv2.error as e:
+                # print(e)
+                continue
 
     # 把所有box转换成longsideformat
     result_labels = []
@@ -1366,7 +1370,7 @@ def random_add_patches(obj_shape, all_boxes, bg_shape, paste_number, iou_thresh,
     while success_num < paste_number:
         attempts += 1
         if attempts == 100:
-            print("未找到合适位置！")
+            # print("未找到合适位置！")
             break
         # print(success_num)
         new_bbox_x_center, new_bbox_y_center = norm_sampling(center_search_space)  # 随机生成目标中心点

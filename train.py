@@ -155,6 +155,12 @@ def train(hyp, opt, device, tb_writer=None):
             for k, v in pt_state_dict.items():  # items() to get k, v
                 if any(x in k for x in backbone):
                     state_dict.update({k: v})
+        elif opt.cfg is not None and 'p4' in opt.cfg:
+            ptLayer = [f'model.{x}.' for x in range(36)]  # get p4 first 35 layers
+            pt_state_dict = ckpt['model'].float().state_dict()  # to FP32
+            for k, v in pt_state_dict.items():  # items() to get k, v
+                if any(x in k for x in ptLayer):
+                    state_dict.update({k: v})
         else:
             state_dict = ckpt['model'].float().state_dict()  # to FP32
         # 加载除了与exclude以外，所有与key匹配的项的参数  即将权重文件中的参数导入对应层中
@@ -312,7 +318,7 @@ def train(hyp, opt, device, tb_writer=None):
     # 设置copy_paste=True开启复制粘贴大法
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
                                             hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect,
-                                            rank=rank, world_size=opt.world_size, workers=opt.workers, copy_paste=False)
+                                            rank=rank, world_size=opt.world_size, workers=opt.workers, copy_paste=True)
 
     # 获取标签中最大的类别值，并于类别数作比较, 如果小于类别数则表示有问题
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
@@ -395,7 +401,7 @@ def train(hyp, opt, device, tb_writer=None):
     # 记录每个epoch的target个数
     with open(log_dir / 'target_count.csv', 'w', encoding='utf-8', newline="") as f_target:
         csv_target = csv.writer(f_target)
-        csv_target.writerow(['Epoch', 'target'])
+        csv_target.writerow(['iteration', 'target'])
 
     # 训练
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
@@ -441,8 +447,8 @@ def train(hyp, opt, device, tb_writer=None):
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
 
-        # 当前epoch的target数
-        targets_count = 0
+        # targets_counts in the first epoch
+        targets_counts = []
 
         for i, (imgs, targets, paths, _) in pbar:  # batch ------------------------------------------------------------
             '''
@@ -527,7 +533,10 @@ def train(hyp, opt, device, tb_writer=None):
                 pbar.set_description(s)
 
                 # 累加target数
-                targets_count += targets.shape[0]
+                if epoch == 0:
+                    # 记录当前iter的target数目并作图
+                    targets_counts.append([i, targets.shape[0]])
+
 
                 # Plot
                 # 将前三次迭代batch的标签框在图片上画出来并保存
@@ -539,6 +548,9 @@ def train(hyp, opt, device, tb_writer=None):
                         # tb_writer.add_graph(model, imgs)  # add model to tensorboard
 
             # end batch ------------------------------------------------------------------------------------------------
+
+        # write target_counts for first epoch
+        write_target_count(targets_counts, log_dir)
 
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for tensorboard
@@ -590,9 +602,6 @@ def train(hyp, opt, device, tb_writer=None):
                         'x/lr0', 'x/lr1', 'x/lr2']  # params
                 for x, tag in zip(list(mloss[:-1]) + list(results) + lr, tags):
                     tb_writer.add_scalar(tag, x, epoch)
-
-            # 记录当前epoch的target数目并作图
-            write_target_count(targets_count, log_dir)
 
             # Update best mAP
             # 更新best_fitness
@@ -687,11 +696,11 @@ if __name__ == '__main__':
         workers:dataloader的最大worker数量
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='weights/yolov5m_30.pt', help='initil weights path')
+    parser.add_argument('--weights', type=str, default='weights/YOLOv5_DOTAv1.5_OBB.pt', help='initil weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/DOTA_ROTATED.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=32)
+    parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--batch-size', type=int, default=4, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[1024, 1024], help='[train, test] image sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -713,11 +722,12 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', type=str, default='runs/', help='logging directory')
     parser.add_argument('--workers', type=int, default=2, help='maximum number of dataloader workers')
     parser.add_argument('--freeze', type=int, default=0, help='Number of layers to freeze. backbone=10, all=24')
+    parser.add_argument('--patience', type=int, default=15, help='EarlyStopping patience (epochs without improvement)')
 
     # for detection
     parser.add_argument('--detect_output', type=str, default='DOTA_demo_view/detection', help='output folder')
-    parser.add_argument('--detect_source', type=str, default='DOTA_demo_view/images/val', help='source')
-    # parser.add_argument('--detect_source', type=str, default='../datasets/dota_interest_small/images/val', help='for test')
+    # parser.add_argument('--detect_source', type=str, default='DOTA_demo_view/images/val', help='source')
+    parser.add_argument('--detect_source', type=str, default='../datasets/dota_interest_small/images/val', help='for test')
     parser.add_argument('--view-img', action='store_true', help='display results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
     parser.add_argument('--augment', action='store_true', help='augmented inference')

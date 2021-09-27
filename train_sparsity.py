@@ -709,7 +709,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--st', action='store_true',default=True, help='train with L1 sparsity normalization')
     parser.add_argument('--sr', type=float, default=0.001, help='L1 normal sparse rate')
-    parser.add_argument('--weights', type=str, default='weights/yolov5m_30.pt', help='initil weights path')
+    parser.add_argument('--weights', type=str, default='weights/YOLOv5_DOTAv1.5_OBB.pt', help='initil weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/DOTA_ROTATED.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.yaml', help='hyperparameters path')

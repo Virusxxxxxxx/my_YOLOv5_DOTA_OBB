@@ -227,14 +227,17 @@ class Concat(nn.Module):
 class Concat_BiFPN(nn.Module):
     # 不是直接concat了，而是进行pairwise add操作
     # Concatenate a list of tensors along dimension
-    def __init__(self, c1, c2):
+    def __init__(self, c1, c2, norm=True):
         super(Concat_BiFPN, self).__init__()
         # self.relu = nn.ReLU()
         self.w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
         self.w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
         self.epsilon = 0.0001
-        self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
+        self.conv = DWConv(c1, c2, k=1, s=1)
         self.swish = MemoryEfficientSwish()
+        # self.norm = norm
+        # if self.norm:
+        #     self.bn = nn.BatchNorm2d(num_features=c2, momentum=0.01, eps=1e-3)
 
     def forward(self, x):
         outs = self._forward(x)
@@ -247,12 +250,15 @@ class Concat_BiFPN(nn.Module):
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             # Connections for P6_0 and P7_0 to P6_1 respectively
             x = self.conv(self.swish(weight[0] * x[0] + weight[1] * x[1]))
+            # if self.norm:
+            #     x = self.bn(x)
         elif len(x) == 3:
             # w = self.relu(self.w2)
             w = self.w2
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.swish(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-
+            # if self.norm:
+            #     x = self.bn(x)
         return x
 
 
@@ -410,6 +416,7 @@ class SpatialAttentionModule(nn.Module):
         self.conv2d = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, stride=1, padding=3)
         #self.act=SiLU()
         self.sigmoid = nn.Sigmoid()
+
     def forward(self, x):
         avgout = torch.mean(x, dim=1, keepdim=True)
         maxout, _ = torch.max(x, dim=1, keepdim=True)
@@ -433,4 +440,47 @@ class CBAM(nn.Module):
 # ASFF Adaptively Spatial Feature Fusion的自适应特征
 
 
+# Transformer
+class TransformerLayer(nn.Module):
+    # Transformer layer https://arxiv.org/abs/2010.11929 (LayerNorm layers removed for better performance)
+    def __init__(self, c, num_heads):
+        super().__init__()
+        self.q = nn.Linear(c, c, bias=False)
+        self.k = nn.Linear(c, c, bias=False)
+        self.v = nn.Linear(c, c, bias=False)
+        self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
+        self.fc1 = nn.Linear(c, c, bias=False)
+        self.fc2 = nn.Linear(c, c, bias=False)
 
+
+    def forward(self, x):
+        x = self.ma(self.q(x), self.k(x), self.v(x))[0] + x
+        x = self.fc2(self.fc1(x)) + x
+        return x
+
+
+class TransformerBlock(nn.Module):
+    # Vision Transformer https://arxiv.org/abs/2010.11929
+    def __init__(self, c1, c2, num_heads, num_layers):
+        super().__init__()
+        self.conv = None
+        if c1 != c2:
+            self.conv = Conv(c1, c2)
+        self.linear = nn.Linear(c2, c2)  # learnable position embedding
+        self.tr = nn.Sequential(*[TransformerLayer(c2, num_heads) for _ in range(num_layers)])
+        self.c2 = c2
+
+    def forward(self, x):
+        if self.conv is not None:
+            x = self.conv(x)
+        b, _, w, h = x.shape
+        p = x.flatten(2).unsqueeze(0).transpose(0, 3).squeeze(3)
+        return self.tr(p + self.linear(p)).unsqueeze(3).transpose(0, 3).reshape(b, self.c2, w, h)
+
+
+class C3TR(C3):
+    # C3 module with TransformerBlock()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = TransformerBlock(c_, c_, 4, n)

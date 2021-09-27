@@ -309,13 +309,14 @@ def evaluation(detoutput, rawImagePath, rawLabelPath):
     for classname in classnames:
         class_rec = []
         class_prec = []
-        for ovthresh in [0.5, 0.6, 0.7]:
+        for ovthresh in [0.5]:
             print('classname:', classname)
             detfile = detpath.format(classname)
             if not (os.path.exists(detfile)):
                 skippedClassCount += 1
                 print('This class is not be detected in your dataset: {:s}'.format(classname))
                 continue
+            # current class rec,prec,ap with  ovthresh = [0.5]
             rec, prec, ap = voc_eval(detpath,
                                      rawLabelPath,
                                      imagesetfile,
@@ -336,9 +337,10 @@ def evaluation(detoutput, rawImagePath, rawLabelPath):
         plt.xlabel('recall')
         plt.ylabel('precision')
         l1, = plt.plot(class_rec[0], class_prec[0], color='orangered', linestyle='-', marker='o', linewidth=1)
-        l2, = plt.plot(class_rec[1], class_prec[1], color='royalblue', linestyle='-', marker='o', linewidth=1)
-        l3, = plt.plot(class_rec[2], class_prec[2], color='limegreen', linestyle='-', marker='o', linewidth=1)
-        plt.legend(handles=[l1, l2, l3], labels=['thread=0.5', 'thread=0.6', 'thread=0.7'], loc='best')
+        # l2, = plt.plot(class_rec[1], class_prec[1], color='royalblue', linestyle='-', marker='o', linewidth=1)
+        # l3, = plt.plot(class_rec[2], class_prec[2], color='limegreen', linestyle='-', marker='o', linewidth=1)
+        # plt.legend(handles=[l1, l2, l3], labels=['thread=0.5', 'thread=0.6', 'thread=0.7'], loc='best')
+        plt.legend(handles=[l1], labels=['thread=0.5'], loc='best')
         plt.grid()
         plt.savefig(detoutput + '/' + "PR_%s.png" % classname)
 

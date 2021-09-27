@@ -228,7 +228,7 @@ if __name__ == '__main__':
         update:如果为True，则对所有模型进行strip_optimizer操作，去除pt文件中的优化器等信息，默认为False
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='./weights/YOLOv5_DOTAv1.5_OBB.pt',
+    parser.add_argument('--weights', nargs='+', type=str, default='./weights/yolov5m_p1.pt',
                         help='model.pt path(s)')
     parser.add_argument('--detect_source', type=str, default='DOTA_demo_view/images/val',
                         help='source')  # file/folder, 0 for webcam
@@ -253,4 +253,4 @@ if __name__ == '__main__':
                 # 去除pt文件中的优化器等信息
                 strip_optimizer(opt.weights)
         else:
-            detect(opt, weights='./weights/yolov5m_SE_49.pt')
+            detect(opt, weights='./weights/yolov5m_p3.pt')
