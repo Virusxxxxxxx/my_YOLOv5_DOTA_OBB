@@ -590,7 +590,7 @@ def train(hyp, opt, device, tb_writer=None):
             # Write
             # 将测试指标写入result.txt
             with open(results_file, 'a') as f:
-                f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
+                f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls, angle)
             if len(opt.name) and opt.bucket:
                 os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
@@ -726,7 +726,7 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', type=str, default='runs/', help='logging directory')
     parser.add_argument('--workers', type=int, default=2, help='maximum number of dataloader workers')
     parser.add_argument('--freeze', type=int, default=0, help='Number of layers to freeze. backbone=10, all=24')
-    parser.add_argument('--patience', type=int, default=15, help='EarlyStopping patience (epochs without improvement)')
+    parser.add_argument('--patience', type=int, default=20, help='EarlyStopping patience (epochs without improvement)')
 
     # for detection
     parser.add_argument('--detect_output', type=str, default='DOTA_demo_view/detection', help='output folder')

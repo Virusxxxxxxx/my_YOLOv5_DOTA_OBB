@@ -172,10 +172,9 @@ def voc_eval(detpath,
     # print('check imge_ids: ', image_ids)
     # print('imge_ids len:', len(image_ids))
     # go down dets and mark TPs and FPs
-    iouv = np.linspace(0.5, 0.95, 10)  # iou vector for mAP@0.5:0.95
     nd = len(image_ids)
-    tp = np.zeros((10, nd))
-    fp = np.zeros((10, nd))
+    tp = np.zeros(nd)
+    fp = np.zeros(nd)
     for d in range(nd):
         R = class_recs[image_ids[d]]
         bb = BB[d, :].astype(float)
@@ -233,19 +232,15 @@ def voc_eval(detpath,
                 jmax = np.argmax(overlaps)
                 # pdb.set_trace()
                 jmax = BBGT_keep_index[jmax]
-        flag = 0  # R['det'][jmax]
-        for i, ov in enumerate(iouv):
-            if ovmax > ov:
-                if not R['difficult'][jmax]:
-                    if not R['det'][jmax]:
-                        tp[i][d] = 1.
-                        flag = 1
-                    else:
-                        fp[i][d] = 1.
-            else:
-                fp[i][d] = 1.
-        if flag == 1:
-            R['det'][jmax] = 1
+        if ovmax > ovthresh:
+            if not R['difficult'][jmax]:
+                if not R['det'][jmax]:
+                    tp[d] = 1.
+                    R['det'][jmax] = 1
+                else:
+                    fp[d] = 1.
+        else:
+            fp[d] = 1.
 
     # compute precision recall
 
@@ -253,21 +248,15 @@ def voc_eval(detpath,
     # print('check tp', tp)
 
     # print('npos num:', npos)
-    fp = np.cumsum(fp, axis=1)
-    tp = np.cumsum(tp, axis=1)
+    fp = np.cumsum(fp)
+    tp = np.cumsum(tp)
 
-    rec = np.zeros(tp.shape)
-    rec[:, 0] = tp[:, 0] / float(npos)
+    rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
-    prec = np.zeros(tp.shape)
-    # eps是很小的非负数，即0和负数全变为eps
-    prec[:, 0] = tp[:, 0] / np.maximum(tp[:, 0] + fp[:, 0], np.finfo(np.float64).eps)
-    ap = np.zeros(10)
-    for i, (rec, prec) in enumerate(rec, prec):
-        ap[i] = voc_ap(rec, prec, use_07_metric)
+    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+    ap = voc_ap(rec, prec, use_07_metric)
 
-    print(ap)
     return rec, prec, ap
 
 
@@ -325,8 +314,7 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
     # classaps = []
     epoch = len(open(resultPath / 'classAP.csv', 'r').readlines())
     allClassAp = [epoch]
-    all_class_ap50 = 0
-    all_class_ap = 0
+    map = 0
     skippedClassCount = 0
     print(('%20s' * 2) % ('Class', 'AP'))
     for classname in classnames:
@@ -335,22 +323,16 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
             skippedClassCount += 1
             allClassAp.append(0.0)
             continue
-
-        # 得到[ap50, ap55, ap60, ...]
         rec, prec, ap = voc_eval(detpath,
                                  rawLabelPath,
                                  imagesetfile,
                                  classname,
                                  ovthresh=0.5,
                                  use_07_metric=True)
-        ap50, ap = ap[0], ap.mean()
-        # 累加所有ap
-        all_class_ap50 += ap50
-        all_class_ap += ap
-
+        map = map + ap
         # print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
-        print('%20s%20g' % (classname, ap[0]))
-        allClassAp.append(ap[0])
+        print('%20s%20g' % (classname, ap))
+        allClassAp.append(ap)
         # classaps.append(ap)
 
         # umcomment to show p-r curve of each category
@@ -359,16 +341,12 @@ def val(detectionPath, rawImagePath, rawLabelPath, resultPath):
         # plt.ylabel('precision')
         # plt.plot(rec, prec)
     # plt.show()
-    nc = len(classnames) - skippedClassCount
     if skippedClassCount != len(classnames):
-        map50 = all_class_ap50 / nc
-        map = all_class_ap / nc
+        map = map / (len(classnames) - skippedClassCount)
     else:
-        map50 = 0
         map = 0
-    print(colorstr('          mAP@0.5:'), map50)
-    print(colorstr('     mAP@0.5:0.95:'), map)
-    allClassAp.insert(1, map50)
+    print(colorstr('     mAP:'), map)
+    allClassAp.insert(1, map)
 
     with open(resultPath / 'classAP.csv', 'a', encoding='utf-8', newline="") as f_ap:
         csv_ap = csv.writer(f_ap)

@@ -14,7 +14,7 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import (
     check_img_size, non_max_suppression, apply_classifier, scale_labels,
-    xyxy2xywh, plot_one_rotated_box, strip_optimizer, set_logging, rotate_non_max_suppression)
+    xyxy2xywh, plot_one_rotated_box, strip_optimizer, set_logging, rotate_non_max_suppression, compute_loss)
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 from utils.evaluation_utils import rbox2txt
 from tqdm import tqdm
@@ -120,7 +120,10 @@ def detect(opt, weights=None, model=None, save_img=False):
             # Inference
             t1 = time_synchronized()
             # pred : (batch_size, boxes, cls)  batch_size=1, cls = 16 + 5 + 180
-            pred = model(img)[0]
+            pred, train_out = model(img)
+
+            # loss, loss_items = compute_loss(train_out, targets.to(device), model,
+            #                                 csl_label_flag=True)  # loss scaled by batch_size
 
             # Apply NMS
             # 进行NMS
@@ -253,4 +256,4 @@ if __name__ == '__main__':
                 # 去除pt文件中的优化器等信息
                 strip_optimizer(opt.weights)
         else:
-            detect(opt, weights='./weights/yolov5m_p3.pt')
+            detect(opt, weights='runs/exp19/weights/yolov5m_p4.pt')
